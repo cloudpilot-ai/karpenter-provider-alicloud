@@ -1,1 +1,16 @@
+# Go toolchain
+coverage.out
+coverage.html
+*.test
+*.cpuprofile
+*.heapprofile
+go.work
+go.work.sum
+
+# Environment
 .idea
+.vscode
+.DS_Store
+
+# Project Specific
+*.csv

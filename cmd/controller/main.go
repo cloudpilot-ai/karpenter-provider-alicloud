@@ -16,5 +16,43 @@ limitations under the License.
 
 package main
 
+import (
+	"github.com/samber/lo"
+	"sigs.k8s.io/karpenter/pkg/cloudprovider/metrics"
+	corecontrollers "sigs.k8s.io/karpenter/pkg/controllers"
+	coreoperator "sigs.k8s.io/karpenter/pkg/operator"
+
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/cloudprovider"
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/controllers"
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/operator"
+)
+
 func main() {
+	ctx, op := operator.NewOperator(coreoperator.NewOperator())
+
+	aliCloudProvider := cloudprovider.New(
+		op.GetClient(),
+		op.EventRecorder,
+	)
+
+	lo.Must0(op.AddHealthzCheck("cloud-provider", aliCloudProvider.LivenessProbe))
+	cloudProvider := metrics.Decorate(aliCloudProvider)
+
+	op.
+		WithControllers(ctx, corecontrollers.NewControllers(
+			op.Manager,
+			op.Clock,
+			op.GetClient(),
+			op.EventRecorder,
+			cloudProvider,
+		)...).
+		WithControllers(ctx, controllers.NewControllers(
+			ctx,
+			op.Manager,
+			op.Clock,
+			op.GetClient(),
+			op.EventRecorder,
+			cloudProvider,
+		)...).
+		Start(ctx, cloudProvider)
 }
