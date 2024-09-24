@@ -40,9 +40,65 @@ spec:
             description: |-
               ECSNodeClassSpec is the top level specification for the AliCloud Karpenter Provider.
               This will contain configuration necessary to launch instances in AliCloud.
+            properties:
+              vSwitchSelectorTerms:
+                description: VSwitchSelectorTerms is a list of or vSwitch selector
+                  terms. The terms are ORed.
+                items:
+                  description: VSwitchSelectorTerm defines selection logic for a vSwitch
+                    used by Karpenter to launch nodes.
+                  properties:
+                    id:
+                      description: ID is the vSwitch id in ECS
+                      pattern: vsw-[0-9a-z]+
+                      type: string
+                    tags:
+                      additionalProperties:
+                        type: string
+                      description: |-
+                        Tags is a map of key/value tags used to select vSwitches
+                        Specifying '*' for a value selects all values for a given tag key.
+                      maxProperties: 20
+                      type: object
+                      x-kubernetes-validations:
+                      - message: empty tag keys aren't supported
+                        rule: self.all(k, k != '')
+                  type: object
+                maxItems: 30
+                type: array
+                x-kubernetes-validations:
+                - message: vSwitchSelectorTerms cannot be empty
+                  rule: self.size() != 0
+                - message: expected at least one, got none, ['tags', 'id']
+                  rule: self.all(x, has(x.tags) || has(x.id))
+                - message: '''id'' is mutually exclusive, cannot be set with a combination
+                    of other fields in vSwitchSelectorTerms'
+                  rule: '!self.all(x, has(x.id) && has(x.tags))'
+            required:
+            - vSwitchSelectorTerms
             type: object
           status:
             description: ECSNodeClassStatus contains the resolved state of the ECSNodeClass
+            properties:
+              vSwitches:
+                description: |-
+                  VSwitches contains the current VSwitch values that are available to the
+                  cluster under the vSwitch selectors.
+                items:
+                  description: VSwitch contains resolved VSwitch selector values utilized
+                    for node launch
+                  properties:
+                    id:
+                      description: ID of the vSwitch
+                      type: string
+                    zoneID:
+                      description: The associated availability zone ID
+                      type: string
+                  required:
+                  - id
+                  - zoneID
+                  type: object
+                type: array
             type: object
         type: object
     served: true

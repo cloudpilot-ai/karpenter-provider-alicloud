@@ -23,6 +23,27 @@ import (
 // ECSNodeClassSpec is the top level specification for the AliCloud Karpenter Provider.
 // This will contain configuration necessary to launch instances in AliCloud.
 type ECSNodeClassSpec struct {
+	// VSwitchSelectorTerms is a list of or vSwitch selector terms. The terms are ORed.
+	// +kubebuilder:validation:XValidation:message="vSwitchSelectorTerms cannot be empty",rule="self.size() != 0"
+	// +kubebuilder:validation:XValidation:message="expected at least one, got none, ['tags', 'id']",rule="self.all(x, has(x.tags) || has(x.id))"
+	// +kubebuilder:validation:XValidation:message="'id' is mutually exclusive, cannot be set with a combination of other fields in vSwitchSelectorTerms",rule="!self.all(x, has(x.id) && has(x.tags))"
+	// +kubebuilder:validation:MaxItems:=30
+	// +required
+	VSwitchSelectorTerms []VSwitchSelectorTerm `json:"vSwitchSelectorTerms" hash:"ignore"`
+}
+
+// VSwitchSelectorTerm defines selection logic for a vSwitch used by Karpenter to launch nodes.
+type VSwitchSelectorTerm struct {
+	// Tags is a map of key/value tags used to select vSwitches
+	// Specifying '*' for a value selects all values for a given tag key.
+	// +kubebuilder:validation:XValidation:message="empty tag keys aren't supported",rule="self.all(k, k != '')"
+	// +kubebuilder:validation:MaxProperties:=20
+	// +optional
+	Tags map[string]string `json:"tags,omitempty"`
+	// ID is the vSwitch id in ECS
+	// +kubebuilder:validation:Pattern="vsw-[0-9a-z]+"
+	// +optional
+	ID string `json:"id,omitempty"`
 }
 
 // KubeletConfiguration defines args to be used when configuring kubelet on provisioned nodes.

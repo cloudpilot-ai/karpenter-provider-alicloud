@@ -16,6 +16,20 @@ limitations under the License.
 
 package v1alpha1
 
+// VSwitch contains resolved VSwitch selector values utilized for node launch
+type VSwitch struct {
+	// ID of the vSwitch
+	// +required
+	ID string `json:"id"`
+	// The associated availability zone ID
+	// +required
+	ZoneID string `json:"zoneID,omitempty"`
+}
+
 // ECSNodeClassStatus contains the resolved state of the ECSNodeClass
 type ECSNodeClassStatus struct {
+	// VSwitches contains the current VSwitch values that are available to the
+	// cluster under the vSwitch selectors.
+	// +optional
+	VSwitches []VSwitch `json:"vSwitches,omitempty"`
 }
