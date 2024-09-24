@@ -1,4 +1,10 @@
-reviewers:
-- jwcesign
+# See the OWNERS docs at https://go.k8s.io/owners
+
 approvers:
+- ringtail
 - jwcesign
+
+reviewers:
+- helen-frank
+- daimaxiaxie
+- IrisIris
