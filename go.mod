@@ -1,8 +1,6 @@
 module github.com/cloudpilot-ai/karpenter-provider-alicloud
 
-go 1.22.5
-
-toolchain go1.22.7
+go 1.23.0
 
 require (
 	github.com/patrickmn/go-cache v2.1.0+incompatible
