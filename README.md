@@ -3,7 +3,12 @@
 [![GitHub License](https://img.shields.io/badge/License-Apache%202.0-ff69b4.svg)](https://github.com/cloudpilot-ai/karpenter-provider-alicloud/blob/main/LICENSE)
 [![contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg?style=flat)](https://github.com/cloudpilot-ai/karpenter-provider-alicloud/issues)
 
-![](docs/images/banner.png)
+<p align="center">
+    <img src="docs/images/banner.png" />
+</p>
+
+> [!NOTE]  
+> It’s not available for use temporarily. We are diligently working on it, and it will be available shortly.
 
 Karpenter is an open-source node provisioning project built for Kubernetes.
 Karpenter improves the efficiency and cost of running workloads on Kubernetes clusters by:
