@@ -23,12 +23,15 @@ import (
 
 	"github.com/patrickmn/go-cache"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"sigs.k8s.io/karpenter/pkg/cloudprovider"
 	"sigs.k8s.io/karpenter/pkg/utils/pretty"
+
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/apis/v1alpha1"
 )
 
 type Provider interface {
 	LivenessProbe(*http.Request) error
-	// List(context.Context, *v1.KubeletConfiguration, *v1.ECSNodeClass) ([]*cloudprovider.InstanceType, error)
+	List(context.Context, *v1alpha1.KubeletConfiguration, *v1alpha1.ECSNodeClass) ([]*cloudprovider.InstanceType, error)
 	UpdateInstanceTypes(ctx context.Context) error
 	UpdateInstanceTypeOfferings(ctx context.Context) error
 }
@@ -81,6 +84,12 @@ func (p *DefaultProvider) LivenessProbe(req *http.Request) error {
 
 	// TODO: implement me
 	return nil
+}
+
+func (p *DefaultProvider) List(ctx context.Context, kc *v1alpha1.KubeletConfiguration, nodeClass *v1alpha1.ECSNodeClass) ([]*cloudprovider.InstanceType, error) {
+
+	// TODO: implement me
+	return nil, nil
 }
 
 func (p *DefaultProvider) UpdateInstanceTypes(ctx context.Context) error {
