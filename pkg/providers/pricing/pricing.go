@@ -32,7 +32,7 @@ var (
 	//go:embed initial-on-demand-prices.json
 	initialOnDemandPricesData []byte
 
-	initialOnDemandPrices = *utilsobject.JsonUnmarshal[map[string]map[string]float64](initialOnDemandPricesData)
+	initialOnDemandPrices = *utilsobject.JSONUnmarshal[map[string]map[string]float64](initialOnDemandPricesData)
 )
 
 const defaultRegion = "cn-qingdao"
