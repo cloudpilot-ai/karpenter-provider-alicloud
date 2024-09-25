@@ -14,26 +14,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package operator
+package object
 
 import (
-	"context"
+	"encoding/json"
+	"reflect"
 
-	"sigs.k8s.io/karpenter/pkg/operator"
-
-	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/pricing"
+	"github.com/samber/lo"
+	"sigs.k8s.io/yaml"
 )
 
-// Operator is injected into the AliCloud CloudProvider's factories
-type Operator struct {
-	*operator.Operator
-
-	PricingProvider pricing.Provider
+func New[T any]() T {
+	return reflect.New(reflect.TypeOf(*new(T)).Elem()).Interface().(T)
 }
 
-func NewOperator(ctx context.Context, operator *operator.Operator) (context.Context, *Operator) {
+func JsonUnmarshal[T any](raw []byte) *T {
+	t := *new(T)
+	lo.Must0(json.Unmarshal(raw, &t))
+	return &t
+}
 
-	return ctx, &Operator{
-		Operator: operator,
-	}
+func YamlUnmarshal[T any](raw []byte) *T {
+	t := *new(T)
+	lo.Must0(yaml.Unmarshal(raw, &t))
+	return &t
 }

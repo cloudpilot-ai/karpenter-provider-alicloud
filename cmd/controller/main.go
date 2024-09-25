@@ -53,6 +53,7 @@ func main() {
 			op.GetClient(),
 			op.EventRecorder,
 			cloudProvider,
+			op.PricingProvider,
 		)...).
 		Start(ctx, cloudProvider)
 }
