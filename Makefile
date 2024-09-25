@@ -25,11 +25,10 @@ TEST_SUITE ?= "..."
 help: ## Display help
 	@awk 'BEGIN {FS = ":.*##"; printf "Usage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-presubmit: verify test ## Run all steps in the developer loop
+presubmit: verify ut-test ## Run all steps in the developer loop
 
-ci-test: test coverage ## Runs tests and submits coverage
-
-ci-non-test: verify licenses vulncheck ## Runs checks other than tests
+toolchain: ## Install developer toolchain
+	./hack/toolchain.sh
 
 run: ## Run Karpenter controller binary against your local cluster
 	SYSTEM_NAMESPACE=${KARPENTER_NAMESPACE} \
@@ -40,25 +39,9 @@ run: ## Run Karpenter controller binary against your local cluster
 		FEATURE_GATES="SpotToSpotConsolidation=true" \
 		go run ./cmd/controller/main.go
 
-test: ## Run tests
-	go test ./pkg/... \
-		-cover -coverprofile=coverage.out -outputdir=. -coverpkg=./... \
-		--ginkgo.focus="${FOCUS}" \
-		--ginkgo.randomize-all \
-		--ginkgo.vv
-
-benchmark:
-	go test -tags=test_performance -run=NoTests -bench=. ./...
-
-coverage:
-	go tool cover -html coverage.out -o coverage.html
-
-verify: tidy download ## Verify code. Includes dependencies, linting, formatting, etc
+verify: tidy ## Verify code. Includes linting, formatting, etc
 	go generate ./...
 	hack/boilerplate.sh
-
-vulncheck: ## Verify code vulnerabilities
-	@govulncheck ./pkg/...
 
 image: ## Build the Karpenter controller images using ko build
 	$(eval CONTROLLER_IMG=$(shell $(WITH_GOFLAGS) KOCACHE=$(KOCACHE) KO_DOCKER_REPO="$(KO_DOCKER_REPO)" ko build --bare github.com/cloudpilot-ai/karpenter-provider-alicloud/cmd/controller))
@@ -75,28 +58,20 @@ apply: verify image ## Deploy the controller from the current state of your git 
         --set controller.image.tag=$(IMG_TAG) \
         --set controller.image.digest=$(IMG_DIGEST)
 
-install:  ## Deploy the latest released version into your ~/.kube/config cluster
-	@echo Upgrading to ${KARPENTER_VERSION}
-	helm upgrade --install karpenter oci://public.ecr.aws/karpenter/karpenter --version ${KARPENTER_VERSION} --namespace ${KARPENTER_NAMESPACE} \
-		$(HELM_OPTS)
-
-delete: ## Delete the controller from your ~/.kube/config cluster
+delete: ## Delete the controller from your kubeconfig cluster
 	helm uninstall karpenter --namespace ${KARPENTER_NAMESPACE}
 
-toolchain: ## Install developer toolchain
-	./hack/toolchain.sh
+ut-test: ## Run unit tests
+	go test ./pkg/... \
+		-cover -coverprofile=coverage.out -outputdir=. -coverpkg=./...
 
-tidy: ## Recursively "go mod tidy" on all directories where go.mod exists
-	$(foreach dir,$(MOD_DIRS),cd $(dir) && go mod tidy $(newline))
+coverage:
+	go tool cover -html coverage.out -o coverage.html
 
-download: ## Recursively "go mod download" on all directories where go.mod exists
-	$(foreach dir,$(MOD_DIRS),cd $(dir) && go mod download $(newline))
-
-update-karpenter: ## Update kubernetes-sigs/karpenter to latest
-	go get -u sigs.k8s.io/karpenter@HEAD
+tidy: ## Recursively "go mod tidy"
 	go mod tidy
 
-.PHONY: help presubmit ci-test ci-non-test run test benchmark coverage verify vulncheck image apply install delete toolchain tidy download update-karpenter
+.PHONY: help presubmit run ut-test coverage verify image apply delete toolchain tidy
 
 define newline
 
