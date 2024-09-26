@@ -25,7 +25,7 @@ TEST_SUITE ?= "..."
 help: ## Display help
 	@awk 'BEGIN {FS = ":.*##"; printf "Usage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-presubmit: verify ut-test ## Run all steps in the developer loop
+presubmit: update verify ut-test ## Run all steps in the developer loop
 
 toolchain: ## Install developer toolchain
 	./hack/toolchain.sh
@@ -39,9 +39,12 @@ run: ## Run Karpenter controller binary against your local cluster
 		FEATURE_GATES="SpotToSpotConsolidation=true" \
 		go run ./cmd/controller/main.go
 
-verify: tidy ## Verify code. Includes linting, formatting, etc
-	go generate ./...
+update: tidy download ## Update go files header, CRD and generated code
 	hack/boilerplate.sh
+	hack/update-generated.sh
+
+verify: ## Verify code. Includes linting, formatting, etc
+	golangci-lint run
 
 image: ## Build the Karpenter controller images using ko build
 	$(eval CONTROLLER_IMG=$(shell $(WITH_GOFLAGS) KOCACHE=$(KOCACHE) KO_DOCKER_REPO="$(KO_DOCKER_REPO)" ko build --bare github.com/cloudpilot-ai/karpenter-provider-alicloud/cmd/controller))
@@ -49,8 +52,8 @@ image: ## Build the Karpenter controller images using ko build
 	$(eval IMG_TAG=$(shell echo $(CONTROLLER_IMG) | cut -d "@" -f 1 | cut -d ":" -f 2 -s))
 	$(eval IMG_DIGEST=$(shell echo $(CONTROLLER_IMG) | cut -d "@" -f 2))
 
-apply: verify image ## Deploy the controller from the current state of your git repository into your ~/.kube/config cluster
-	kubectl apply -f ./pkg/apis/crds/
+apply: image ## Deploy the controller from the current state of your git repository into your ~/.kube/config cluster
+	kubectl apply -f ./config/components/crds/
 	helm upgrade --install karpenter charts/karpenter --namespace ${KARPENTER_NAMESPACE} \
         $(HELM_OPTS) \
         --set logLevel=debug \
@@ -68,10 +71,13 @@ ut-test: ## Run unit tests
 coverage:
 	go tool cover -html coverage.out -o coverage.html
 
-tidy: ## Recursively "go mod tidy"
+tidy: ## Run "go mod tidy"
 	go mod tidy
 
-.PHONY: help presubmit run ut-test coverage verify image apply delete toolchain tidy
+download: ## Run "go mod download"
+	go mod download
+
+.PHONY: help presubmit run ut-test coverage update verify image apply delete toolchain tidy download
 
 define newline
 

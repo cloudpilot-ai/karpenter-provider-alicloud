@@ -28,13 +28,13 @@ func New[T any]() T {
 	return reflect.New(reflect.TypeOf(*new(T)).Elem()).Interface().(T)
 }
 
-func JsonUnmarshal[T any](raw []byte) *T {
+func JSONUnmarshal[T any](raw []byte) *T {
 	t := *new(T)
 	lo.Must0(json.Unmarshal(raw, &t))
 	return &t
 }
 
-func YamlUnmarshal[T any](raw []byte) *T {
+func YAMLUnmarshal[T any](raw []byte) *T {
 	t := *new(T)
 	lo.Must0(yaml.Unmarshal(raw, &t))
 	return &t

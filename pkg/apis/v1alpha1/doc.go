@@ -14,10 +14,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// +k8s:openapi-gen=true
+// +k8s:deepcopy-gen=package,register
+// +groupName=karpenter.k8s.alicloud
 package v1alpha1
 
 import (
-	"context"
+	corev1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/kubernetes/scheme"
+
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/apis"
 )
 
-func (in *ECSNodeClass) SetDefaults(_ context.Context) {}
+func init() {
+	gv := schema.GroupVersion{Group: apis.Group, Version: "v1"}
+	corev1.AddToGroupVersion(scheme.Scheme, gv)
+	scheme.Scheme.AddKnownTypes(gv,
+		&ECSNodeClass{},
+		&ECSNodeClassList{},
+	)
+}

@@ -21,10 +21,8 @@ import (
 	"sigs.k8s.io/karpenter/pkg/apis"
 )
 
-//go:generate controller-gen crd object:headerFile="../../hack/boilerplate.go.txt" paths="./..." output:crd:artifacts:config=crds
 var (
 	Group              = "karpenter.k8s.alicloud"
 	CompatibilityGroup = "compatibility." + Group
-	CRDs               = append(apis.CRDs) // object.Unmarshal[apiextensionsv1.CustomResourceDefinition](crds.ECSNodeClassCRD)
-
+	CRDs               = apis.CRDs // object.Unmarshal[apiextensionsv1.CustomResourceDefinition](crds.ECSNodeClassCRD)
 )
