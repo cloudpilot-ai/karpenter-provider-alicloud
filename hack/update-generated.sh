@@ -15,15 +15,9 @@ cleanup() {
 }
 trap "cleanup" EXIT SIGINT
 
-echo $REPO_ROOT
-echo $GOPATH
-
 KARPENTER_GO_PACKAGE="github.com/cloudpilot-ai/karpenter-provider-alicloud"
 GO_PKG_DIR=$(dirname "${GOPATH}/src/${KARPENTER_GO_PACKAGE}")
 mkdir -p "${GO_PKG_DIR}"
-
-echo $KARPENTER_GO_PACKAGE
-echo $GO_PKG_DIR
 
 if [[ ! -e "${GO_PKG_DIR}" || "$(readlink "${GO_PKG_DIR}")" != "${REPO_ROOT}" ]]; then
   ln -snf "${REPO_ROOT}" "${GO_PKG_DIR}"
