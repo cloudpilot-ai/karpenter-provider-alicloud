@@ -20,11 +20,15 @@ import (
 	"context"
 
 	"sigs.k8s.io/karpenter/pkg/operator"
+
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/pricing"
 )
 
 // Operator is injected into the AliCloud CloudProvider's factories
 type Operator struct {
 	*operator.Operator
+
+	PricingProvider pricing.Provider
 }
 
 func NewOperator(ctx context.Context, operator *operator.Operator) (context.Context, *Operator) {

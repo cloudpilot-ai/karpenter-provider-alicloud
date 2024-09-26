@@ -14,15 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package apis contains Kubernetes API groups.
-package apis
+package v1alpha1
 
-import (
-	"sigs.k8s.io/karpenter/pkg/apis"
-)
-
-var (
-	Group              = "karpenter.k8s.alicloud"
-	CompatibilityGroup = "compatibility." + Group
-	CRDs               = apis.CRDs // object.Unmarshal[apiextensionsv1.CustomResourceDefinition](crds.ECSNodeClassCRD)
-)
+// ECSNodeClassStatus contains the resolved state of the ECSNodeClass
+type ECSNodeClassStatus struct {
+}

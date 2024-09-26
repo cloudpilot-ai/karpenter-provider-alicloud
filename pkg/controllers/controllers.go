@@ -25,10 +25,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/karpenter/pkg/cloudprovider"
 	"sigs.k8s.io/karpenter/pkg/events"
+
+	controllerspricing "github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/controllers/providers/pricing"
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/pricing"
 )
 
-func NewControllers(ctx context.Context, mgr manager.Manager, clk clock.Clock, kubeClient client.Client, recorder events.Recorder, cloudProvider cloudprovider.CloudProvider) []controller.Controller {
+func NewControllers(ctx context.Context, mgr manager.Manager, clk clock.Clock, kubeClient client.Client, recorder events.Recorder,
+	cloudProvider cloudprovider.CloudProvider, pricingProvider pricing.Provider) []controller.Controller {
 
-	controllers := []controller.Controller{}
+	controllers := []controller.Controller{
+		controllerspricing.NewController(pricingProvider),
+	}
 	return controllers
 }

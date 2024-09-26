@@ -27,7 +27,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/version"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
 	"sigs.k8s.io/karpenter/pkg/utils/pretty"
 )
 

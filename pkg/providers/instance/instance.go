@@ -18,10 +18,15 @@ package instance
 
 import (
 	"context"
+
+	karpv1 "sigs.k8s.io/karpenter/pkg/apis/v1"
+	"sigs.k8s.io/karpenter/pkg/cloudprovider"
+
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/apis/v1alpha1"
 )
 
 type Provider interface {
-	// Create(context.Context, *v1.ECSNodeClass, *karpv1.NodeClaim, []*cloudprovider.InstanceType) (*Instance, error)
+	Create(context.Context, *v1alpha1.ECSNodeClass, *karpv1.NodeClaim, []*cloudprovider.InstanceType) (*Instance, error)
 	Get(context.Context, string) (*Instance, error)
 	List(context.Context) ([]*Instance, error)
 	Delete(context.Context, string) error
@@ -38,7 +43,11 @@ func NewDefaultProvider(ctx context.Context, region string) *DefaultProvider {
 	}
 }
 
-// func (p *DefaultProvider) Create(ctx context.Context, nodeClass *v1.ECSNodeClass, nodeClaim *karpv1.NodeClaim, instanceTypes []*cloudprovider.InstanceType) (*Instance, error) {}
+func (p *DefaultProvider) Create(ctx context.Context, nodeClass *v1alpha1.ECSNodeClass, nodeClaim *karpv1.NodeClaim, instanceTypes []*cloudprovider.InstanceType) (*Instance, error) {
+
+	// TODO: implement me
+	return nil, nil
+}
 
 func (p *DefaultProvider) Get(ctx context.Context, id string) (*Instance, error) {
 

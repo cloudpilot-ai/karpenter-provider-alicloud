@@ -13,16 +13,3 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-
-// Package apis contains Kubernetes API groups.
-package apis
-
-import (
-	"sigs.k8s.io/karpenter/pkg/apis"
-)
-
-var (
-	Group              = "karpenter.k8s.alicloud"
-	CompatibilityGroup = "compatibility." + Group
-	CRDs               = apis.CRDs // object.Unmarshal[apiextensionsv1.CustomResourceDefinition](crds.ECSNodeClassCRD)
-)
