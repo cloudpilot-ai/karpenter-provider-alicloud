@@ -18,10 +18,13 @@ package operator
 
 import (
 	"context"
+	"os"
 
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/karpenter/pkg/operator"
 
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/pricing"
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/utils/client"
 )
 
 // Operator is injected into the AliCloud CloudProvider's factories
@@ -32,8 +35,21 @@ type Operator struct {
 }
 
 func NewOperator(ctx context.Context, operator *operator.Operator) (context.Context, *Operator) {
+	ecsClient, err := client.NewECSClient()
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to create ECS client")
+		os.Exit(1)
+	}
+
+	pricingProvider := pricing.NewDefaultProvider(
+		ctx,
+		ecsClient,
+		*ecsClient.RegionId,
+	)
 
 	return ctx, &Operator{
 		Operator: operator,
+
+		PricingProvider: pricingProvider,
 	}
 }

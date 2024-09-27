@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"sync"
 
+	ecsclient "github.com/alibabacloud-go/ecs-20140526/v4/client"
 	"github.com/samber/lo"
 	"sigs.k8s.io/karpenter/pkg/utils/pretty"
 
@@ -53,7 +54,7 @@ type Provider interface {
 // fails, the previous pricing information is retained and used which may be the static initial pricing data if pricing
 // updates never succeed.
 type DefaultProvider struct {
-	// ec2     ec2iface.EC2API
+	ecsClient *ecsclient.Client
 	// pricing pricingiface.PricingAPI
 	region string
 	cm     *pretty.ChangeMonitor
@@ -83,9 +84,10 @@ func newZonalPricing(defaultPrice float64) zonal {
 	return z
 }
 
-func NewDefaultProvider(_ context.Context, region string) *DefaultProvider {
+func NewDefaultProvider(_ context.Context, ecsClient *ecsclient.Client, region string) *DefaultProvider {
 	p := &DefaultProvider{
-		region: region,
+		region:    region,
+		ecsClient: ecsClient,
 
 		cm: pretty.NewChangeMonitor(),
 	}
