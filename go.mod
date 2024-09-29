@@ -5,6 +5,7 @@ go 1.23
 require (
 	github.com/alibabacloud-go/darabonba-openapi/v2 v2.0.10
 	github.com/alibabacloud-go/ecs-20140526/v4 v4.25.1
+	github.com/alibabacloud-go/oos-20190601/v4 v4.2.2
 	github.com/alibabacloud-go/tea v1.2.2
 	github.com/alibabacloud-go/tea-utils/v2 v2.0.6
 	github.com/aliyun/aliyun-cli v0.0.0-20240925084117-158a70e275f0
