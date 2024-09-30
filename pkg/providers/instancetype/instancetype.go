@@ -86,12 +86,10 @@ func NewDefaultProvider(region string, ecsClient *ecsclient.Client, instanceType
 }
 
 func (p *DefaultProvider) LivenessProbe(req *http.Request) error {
-
 	return p.pricingProvider.LivenessProbe(req)
 }
 
 func (p *DefaultProvider) List(ctx context.Context, kc *v1alpha1.KubeletConfiguration, nodeClass *v1alpha1.ECSNodeClass) ([]*cloudprovider.InstanceType, error) {
-
 	// TODO: implement me
 	return nil, nil
 }
@@ -124,7 +122,7 @@ func (p *DefaultProvider) UpdateInstanceTypes(ctx context.Context) error {
 func (p *DefaultProvider) UpdateInstanceTypeOfferings(ctx context.Context) error {
 	// DO NOT REMOVE THIS LOCK ----------------------------------------------------------------------------
 	// We lock here so that multiple callers to getInstanceTypeOfferings do not result in cache misses and multiple
-	// calls to EC2 when we could have just made one call.
+	// calls to ECS when we could have just made one call.
 
 	p.muInstanceTypeOfferings.Lock()
 	defer p.muInstanceTypeOfferings.Unlock()

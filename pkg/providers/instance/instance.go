@@ -53,8 +53,8 @@ func NewDefaultProvider(ctx context.Context, region string, ecsClient *ecsclient
 }
 
 func (p *DefaultProvider) Create(ctx context.Context, nodeClass *v1alpha1.ECSNodeClass, nodeClaim *karpv1.NodeClaim,
-	instanceTypes []*cloudprovider.InstanceType) (*Instance, error) {
-
+	instanceTypes []*cloudprovider.InstanceType,
+) (*Instance, error) {
 	// TODO: implement me
 	return nil, nil
 }
