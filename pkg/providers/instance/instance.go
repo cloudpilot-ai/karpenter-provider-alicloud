@@ -33,10 +33,9 @@ import (
 )
 
 type Provider interface {
-	Create(context.Context, *v1alpha1.ECSNodeClass, *karpv1.NodeClaim,
-		[]*cloudprovider.InstanceType) (*ecsclient.DescribeInstancesResponseBodyInstancesInstance, error)
-	Get(context.Context, string) (*ecsclient.DescribeInstancesResponseBodyInstancesInstance, error)
-	List(context.Context) ([]*ecsclient.DescribeInstancesResponseBodyInstancesInstance, error)
+	Create(context.Context, *v1alpha1.ECSNodeClass, *karpv1.NodeClaim, []*cloudprovider.InstanceType) (*Instance, error)
+	Get(context.Context, string) (*Instance, error)
+	List(context.Context) ([]*Instance, error)
 	Delete(context.Context, string) error
 	CreateTags(context.Context, string, map[string]string) error
 }
@@ -54,13 +53,13 @@ func NewDefaultProvider(ctx context.Context, region string, ecsClient *ecsclient
 }
 
 func (p *DefaultProvider) Create(ctx context.Context, nodeClass *v1alpha1.ECSNodeClass, nodeClaim *karpv1.NodeClaim,
-	instanceTypes []*cloudprovider.InstanceType) (*ecsclient.DescribeInstancesResponseBodyInstancesInstance, error) {
+	instanceTypes []*cloudprovider.InstanceType) (*Instance, error) {
 
 	// TODO: implement me
 	return nil, nil
 }
 
-func (p *DefaultProvider) Get(ctx context.Context, id string) (*ecsclient.DescribeInstancesResponseBodyInstancesInstance, error) {
+func (p *DefaultProvider) Get(ctx context.Context, id string) (*Instance, error) {
 	describeInstancesRequest := &ecsclient.DescribeInstancesRequest{
 		RegionId:    &p.region,
 		InstanceIds: tea.String("[\"" + id + "\"]"),
@@ -80,11 +79,11 @@ func (p *DefaultProvider) Get(ctx context.Context, id string) (*ecsclient.Descri
 		return nil, fmt.Errorf("expected a single instance, %w", err)
 	}
 
-	return resp.Body.Instances.Instance[0], nil
+	return NewInstance(resp.Body.Instances.Instance[0]), nil
 }
 
-func (p *DefaultProvider) List(ctx context.Context) ([]*ecsclient.DescribeInstancesResponseBodyInstancesInstance, error) {
-	var instances []*ecsclient.DescribeInstancesResponseBodyInstancesInstance
+func (p *DefaultProvider) List(ctx context.Context) ([]*Instance, error) {
+	var instances []*Instance
 
 	describeInstancesRequest := &ecsclient.DescribeInstancesRequest{
 		Tag: []*ecsclient.DescribeInstancesRequestTag{
@@ -121,7 +120,9 @@ func (p *DefaultProvider) List(ctx context.Context) ([]*ecsclient.DescribeInstan
 		}
 
 		describeInstancesRequest.NextToken = resp.Body.NextToken
-		instances = append(instances, resp.Body.Instances.Instance...)
+		for i := range resp.Body.Instances.Instance {
+			instances = append(instances, NewInstance(resp.Body.Instances.Instance[i]))
+		}
 	}
 
 	return instances, nil
