@@ -18,57 +18,162 @@ package instance
 
 import (
 	"context"
+	"fmt"
 
+	ecsclient "github.com/alibabacloud-go/ecs-20140526/v4/client"
+	util "github.com/alibabacloud-go/tea-utils/v2/service"
+	"github.com/alibabacloud-go/tea/tea"
+	"go.uber.org/multierr"
 	karpv1 "sigs.k8s.io/karpenter/pkg/apis/v1"
 	"sigs.k8s.io/karpenter/pkg/cloudprovider"
 
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/apis/v1alpha1"
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/operator/options"
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/utils/alierrors"
 )
 
 type Provider interface {
-	Create(context.Context, *v1alpha1.ECSNodeClass, *karpv1.NodeClaim, []*cloudprovider.InstanceType) (*Instance, error)
-	Get(context.Context, string) (*Instance, error)
-	List(context.Context) ([]*Instance, error)
+	Create(context.Context, *v1alpha1.ECSNodeClass, *karpv1.NodeClaim,
+		[]*cloudprovider.InstanceType) (*ecsclient.DescribeInstancesResponseBodyInstancesInstance, error)
+	Get(context.Context, string) (*ecsclient.DescribeInstancesResponseBodyInstancesInstance, error)
+	List(context.Context) ([]*ecsclient.DescribeInstancesResponseBodyInstancesInstance, error)
 	Delete(context.Context, string) error
 	CreateTags(context.Context, string, map[string]string) error
 }
 
 type DefaultProvider struct {
-	region string
+	ecsClient *ecsclient.Client
+	region    string
 }
 
-func NewDefaultProvider(ctx context.Context, region string) *DefaultProvider {
+func NewDefaultProvider(ctx context.Context, region string, ecsClient *ecsclient.Client) *DefaultProvider {
 	return &DefaultProvider{
-		region: region,
+		ecsClient: ecsClient,
+		region:    region,
 	}
 }
 
-func (p *DefaultProvider) Create(ctx context.Context, nodeClass *v1alpha1.ECSNodeClass, nodeClaim *karpv1.NodeClaim, instanceTypes []*cloudprovider.InstanceType) (*Instance, error) {
+func (p *DefaultProvider) Create(ctx context.Context, nodeClass *v1alpha1.ECSNodeClass, nodeClaim *karpv1.NodeClaim,
+	instanceTypes []*cloudprovider.InstanceType) (*ecsclient.DescribeInstancesResponseBodyInstancesInstance, error) {
 
 	// TODO: implement me
 	return nil, nil
 }
 
-func (p *DefaultProvider) Get(ctx context.Context, id string) (*Instance, error) {
+func (p *DefaultProvider) Get(ctx context.Context, id string) (*ecsclient.DescribeInstancesResponseBodyInstancesInstance, error) {
+	describeInstancesRequest := &ecsclient.DescribeInstancesRequest{
+		RegionId:    &p.region,
+		InstanceIds: tea.String("[\"" + id + "\"]"),
+	}
+	runtime := &util.RuntimeOptions{}
 
-	// TODO: implement me
-	return nil, nil
+	resp, err := p.ecsClient.DescribeInstancesWithOptions(describeInstancesRequest, runtime)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp == nil || resp.Body == nil || resp.Body.Instances == nil {
+		return nil, fmt.Errorf("failed to get instance %s", id)
+	}
+
+	if len(resp.Body.Instances.Instance) != 1 {
+		return nil, fmt.Errorf("expected a single instance, %w", err)
+	}
+
+	return resp.Body.Instances.Instance[0], nil
 }
 
-func (p *DefaultProvider) List(ctx context.Context) ([]*Instance, error) {
+func (p *DefaultProvider) List(ctx context.Context) ([]*ecsclient.DescribeInstancesResponseBodyInstancesInstance, error) {
+	var instances []*ecsclient.DescribeInstancesResponseBodyInstancesInstance
 
-	// TODO: implement me
-	return nil, nil
+	describeInstancesRequest := &ecsclient.DescribeInstancesRequest{
+		Tag: []*ecsclient.DescribeInstancesRequestTag{
+			{
+				Key: tea.String(karpv1.NodePoolLabelKey),
+			},
+			{
+				Key: tea.String(v1alpha1.LabelNodeClass),
+			},
+			{
+				Key:   tea.String("kubernetes.io/cluster"),
+				Value: tea.String(options.FromContext(ctx).ClusterName),
+			},
+		},
+	}
+
+	runtime := &util.RuntimeOptions{}
+
+	for {
+		// TODO: limit 1000
+		/* Refer https://api.aliyun.com/api/Ecs/2014-05-26/DescribeInstances
+		If you use one tag to filter resources, the number of resources queried under that tag cannot exceed 1000;
+		if you use multiple tags to filter resources, the number of resources queried with multiple tags bound at the
+		same time cannot exceed 1000. If the number of resources exceeds 1000, use the ListTagResources interface to query.
+		*/
+		resp, err := p.ecsClient.DescribeInstancesWithOptions(describeInstancesRequest, runtime)
+		if err != nil {
+			return nil, err
+		}
+
+		if resp == nil || resp.Body == nil || resp.Body.NextToken == nil || resp.Body.Instances == nil ||
+			*resp.Body.NextToken == "" || len(resp.Body.Instances.Instance) == 0 {
+			break
+		}
+
+		describeInstancesRequest.NextToken = resp.Body.NextToken
+		instances = append(instances, resp.Body.Instances.Instance...)
+	}
+
+	return instances, nil
 }
 
 func (p *DefaultProvider) Delete(ctx context.Context, id string) error {
+	deleteInstanceRequest := &ecsclient.DeleteInstanceRequest{
+		InstanceId: tea.String(id),
+	}
 
-	// TODO: implement me
+	runtime := &util.RuntimeOptions{}
+	if _, err := p.ecsClient.DeleteInstanceWithOptions(deleteInstanceRequest, runtime); err != nil {
+		if alierrors.IsNotFound(err) {
+			return cloudprovider.NewNodeClaimNotFoundError(fmt.Errorf("instance already terminated"))
+		}
+
+		if _, e := p.Get(ctx, id); e != nil {
+			if cloudprovider.IsNodeClaimNotFoundError(e) {
+				return e
+			}
+			err = multierr.Append(err, e)
+		}
+
+		return fmt.Errorf("terminating instance, %w", err)
+	}
+
 	return nil
 }
 
 func (p *DefaultProvider) CreateTags(ctx context.Context, id string, tags map[string]string) error {
+	ecsTags := make([]*ecsclient.AddTagsRequestTag, 0, len(tags))
+	for k, v := range tags {
+		ecsTags = append(ecsTags, &ecsclient.AddTagsRequestTag{
+			Key:   tea.String(k),
+			Value: tea.String(v),
+		})
+	}
 
-	// TODO: implement me
+	addTagsRequest := &ecsclient.AddTagsRequest{
+		RegionId:     &p.region,
+		ResourceType: tea.String("instance"),
+		ResourceId:   tea.String(id),
+		Tag:          ecsTags,
+	}
+
+	runtime := &util.RuntimeOptions{}
+	if _, err := p.ecsClient.AddTagsWithOptions(addTagsRequest, runtime); err != nil {
+		if alierrors.IsNotFound(err) {
+			return cloudprovider.NewNodeClaimNotFoundError(fmt.Errorf("tagging instance, %w", err))
+		}
+		return fmt.Errorf("tagging instance, %w", err)
+	}
+
 	return nil
 }
