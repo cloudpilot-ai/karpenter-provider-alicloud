@@ -8,11 +8,16 @@ metadata:
 spec:
   group: karpenter.k8s.alicloud
   names:
+    categories:
+    - karpenter
     kind: ECSNodeClass
     listKind: ECSNodeClassList
     plural: ecsnodeclasses
+    shortNames:
+    - ecsnc
+    - ecsncs
     singular: ecsnodeclass
-  scope: Namespaced
+  scope: Cluster
   versions:
   - name: v1alpha1
     schema:
@@ -164,6 +169,48 @@ spec:
                     evictionSoft
                   rule: has(self.evictionSoftGracePeriod) ? self.evictionSoftGracePeriod.all(e,
                     (e in self.evictionSoft)):true
+              securityGroupSelectorTerms:
+                description: SecurityGroupSelectorTerms is a list of or security group
+                  selector terms. The terms are ORed.
+                items:
+                  description: |-
+                    SecurityGroupSelectorTerm defines selection logic for a security group used by Karpenter to launch nodes.
+                    If multiple fields are used for selection, the requirements are ANDed.
+                  properties:
+                    id:
+                      description: ID is the security group id in ECS
+                      pattern: sg-[0-9a-z]+
+                      type: string
+                    name:
+                      description: |-
+                        Name is the security group name in ECS.
+                        This value is the name field, which is different from the name tag.
+                      type: string
+                    tags:
+                      additionalProperties:
+                        type: string
+                      description: |-
+                        Tags is a map of key/value tags used to select subnets
+                        Specifying '*' for a value selects all values for a given tag key.
+                      maxProperties: 20
+                      type: object
+                      x-kubernetes-validations:
+                      - message: empty tag keys aren't supported
+                        rule: self.all(k, k != '')
+                  type: object
+                maxItems: 30
+                type: array
+                x-kubernetes-validations:
+                - message: securityGroupSelectorTerms cannot be empty
+                  rule: self.size() != 0
+                - message: expected at least one, got none, ['tags', 'id', 'name']
+                  rule: self.all(x, has(x.tags) || has(x.id) || has(x.name))
+                - message: '''id'' is mutually exclusive, cannot be set with a combination
+                    of other fields in securityGroupSelectorTerms'
+                  rule: '!self.all(x, has(x.id) && (has(x.tags) || has(x.name)))'
+                - message: '''name'' is mutually exclusive, cannot be set with a combination
+                    of other fields in securityGroupSelectorTerms'
+                  rule: '!self.all(x, has(x.name) && (has(x.tags) || has(x.id)))'
               vSwitchSelectorTerms:
                 description: VSwitchSelectorTerms is a list of or vSwitch selector
                   terms. The terms are ORed.
@@ -198,11 +245,30 @@ spec:
                     of other fields in vSwitchSelectorTerms'
                   rule: '!self.all(x, has(x.id) && has(x.tags))'
             required:
+            - securityGroupSelectorTerms
             - vSwitchSelectorTerms
             type: object
           status:
             description: ECSNodeClassStatus contains the resolved state of the ECSNodeClass
             properties:
+              securityGroups:
+                description: |-
+                  SecurityGroups contains the current Security Groups values that are available to the
+                  cluster under the SecurityGroups selectors.
+                items:
+                  description: SecurityGroup contains resolved SecurityGroup selector
+                    values utilized for node launch
+                  properties:
+                    id:
+                      description: ID of the security group
+                      type: string
+                    name:
+                      description: Name of the security group
+                      type: string
+                  required:
+                  - id
+                  type: object
+                type: array
               vSwitches:
                 description: |-
                   VSwitches contains the current VSwitch values that are available to the

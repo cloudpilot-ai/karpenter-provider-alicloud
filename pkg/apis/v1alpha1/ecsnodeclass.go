@@ -30,6 +30,14 @@ type ECSNodeClassSpec struct {
 	// +kubebuilder:validation:MaxItems:=30
 	// +required
 	VSwitchSelectorTerms []VSwitchSelectorTerm `json:"vSwitchSelectorTerms" hash:"ignore"`
+	// SecurityGroupSelectorTerms is a list of or security group selector terms. The terms are ORed.
+	// +kubebuilder:validation:XValidation:message="securityGroupSelectorTerms cannot be empty",rule="self.size() != 0"
+	// +kubebuilder:validation:XValidation:message="expected at least one, got none, ['tags', 'id', 'name']",rule="self.all(x, has(x.tags) || has(x.id) || has(x.name))"
+	// +kubebuilder:validation:XValidation:message="'id' is mutually exclusive, cannot be set with a combination of other fields in securityGroupSelectorTerms",rule="!self.all(x, has(x.id) && (has(x.tags) || has(x.name)))"
+	// +kubebuilder:validation:XValidation:message="'name' is mutually exclusive, cannot be set with a combination of other fields in securityGroupSelectorTerms",rule="!self.all(x, has(x.name) && (has(x.tags) || has(x.id)))"
+	// +kubebuilder:validation:MaxItems:=30
+	// +required
+	SecurityGroupSelectorTerms []SecurityGroupSelectorTerm `json:"securityGroupSelectorTerms" hash:"ignore"`
 	// KubeletConfiguration defines args to be used when configuring kubelet on provisioned nodes.
 	// They are a subset of the upstream types, recognizing not all options may be supported.
 	// Wherever possible, the types and names should reflect the upstream kubelet types.
@@ -52,6 +60,24 @@ type VSwitchSelectorTerm struct {
 	// +kubebuilder:validation:Pattern="vsw-[0-9a-z]+"
 	// +optional
 	ID string `json:"id,omitempty"`
+}
+
+// SecurityGroupSelectorTerm defines selection logic for a security group used by Karpenter to launch nodes.
+// If multiple fields are used for selection, the requirements are ANDed.
+type SecurityGroupSelectorTerm struct {
+	// Tags is a map of key/value tags used to select subnets
+	// Specifying '*' for a value selects all values for a given tag key.
+	// +kubebuilder:validation:XValidation:message="empty tag keys aren't supported",rule="self.all(k, k != '')"
+	// +kubebuilder:validation:MaxProperties:=20
+	// +optional
+	Tags map[string]string `json:"tags,omitempty"`
+	// ID is the security group id in ECS
+	// +kubebuilder:validation:Pattern:="sg-[0-9a-z]+"
+	// +optional
+	ID string `json:"id,omitempty"`
+	// Name is the security group name in ECS.
+	// This value is the name field, which is different from the name tag.
+	Name string `json:"name,omitempty"`
 }
 
 // KubeletConfiguration defines args to be used when configuring kubelet on provisioned nodes.
@@ -125,6 +151,7 @@ type KubeletConfiguration struct {
 
 // ECSNodeClass is the Schema for the ECSNodeClass API
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:resource:path=ecsnodeclasses,scope=Cluster,categories=karpenter,shortName={ecsnc,ecsncs}
 // +kubebuilder:subresource:status
 type ECSNodeClass struct {
 	metav1.TypeMeta   `json:",inline"`
