@@ -19,6 +19,7 @@ package utils
 import (
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 
 	"sigs.k8s.io/karpenter/pkg/cloudprovider"
@@ -62,4 +63,20 @@ func GetAllSingleValuedRequirementLabels(instanceType *cloudprovider.InstanceTyp
 		}
 	}
 	return labels
+}
+
+// PrettySlice truncates a slice after a certain number of max items to ensure
+// that the Slice isn't too long
+func PrettySlice[T any](s []T, maxItems int) string {
+	var sb strings.Builder
+	for i, elem := range s {
+		if i > maxItems-1 {
+			fmt.Fprintf(&sb, " and %d other(s)", len(s)-i)
+			break
+		} else if i > 0 {
+			fmt.Fprint(&sb, ", ")
+		}
+		fmt.Fprint(&sb, elem)
+	}
+	return sb.String()
 }
