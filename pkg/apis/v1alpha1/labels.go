@@ -56,8 +56,8 @@ func init() {
 }
 
 var (
-	TerminationFinalizer   = apis.Group + "/termination"
-	AWSToKubeArchitectures = map[string]string{
+	TerminationFinalizer      = apis.Group + "/termination"
+	AliyunToKubeArchitectures = map[string]string{
 		"x86_64":                 karpv1.ArchitectureAmd64,
 		karpv1.ArchitectureArm64: karpv1.ArchitectureArm64,
 	}
@@ -79,7 +79,7 @@ var (
 	}
 	AMIFamilyBottlerocket                          = "Bottlerocket"
 	AMIFamilyAL2                                   = "AL2"
-	AMIFamilyAL2023                                = "AL2023"
+	AMIFamilyAliyun3                               = "Aliyun3"
 	AMIFamilyUbuntu                                = "Ubuntu"
 	AMIFamilyWindows2019                           = "Windows2019"
 	AMIFamilyWindows2022                           = "Windows2022"
