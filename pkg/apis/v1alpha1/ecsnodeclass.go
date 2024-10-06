@@ -17,6 +17,10 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"log"
+	"strings"
+
+	"github.com/samber/lo"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -38,6 +42,15 @@ type ECSNodeClassSpec struct {
 	// +kubebuilder:validation:MaxItems:=30
 	// +required
 	SecurityGroupSelectorTerms []SecurityGroupSelectorTerm `json:"securityGroupSelectorTerms" hash:"ignore"`
+	// ImageSelectorTerms is a list of or image selector terms. The terms are ORed.
+	// +kubebuilder:validation:XValidation:message="expected at least one, got none, ['tags', 'id', 'name', 'alias']",rule="self.all(x, has(x.tags) || has(x.id) || has(x.name) || has(x.alias))"
+	// +kubebuilder:validation:XValidation:message="'id' is mutually exclusive, cannot be set with a combination of other fields in imageSelectorTerms",rule="!self.exists(x, has(x.id) && (has(x.alias) || has(x.tags) || has(x.name) || has(x.owner)))"
+	// +kubebuilder:validation:XValidation:message="'alias' is mutually exclusive, cannot be set with a combination of other fields in imageSelectorTerms",rule="!self.exists(x, has(x.alias) && (has(x.id) || has(x.tags) || has(x.name) || has(x.owner)))"
+	// +kubebuilder:validation:XValidation:message="'alias' is mutually exclusive, cannot be set with a combination of other imageSelectorTerms",rule="!(self.exists(x, has(x.alias)) && self.size() != 1)"
+	// +kubebuilder:validation:MinItems:=1
+	// +kubebuilder:validation:MaxItems:=30
+	// +required
+	ImageSelectorTerms []ImageSelectorTerm `json:"imageSelectorTerms" hash:"ignore"`
 	// KubeletConfiguration defines args to be used when configuring kubelet on provisioned nodes.
 	// They are a subset of the upstream types, recognizing not all options may be supported.
 	// Wherever possible, the types and names should reflect the upstream kubelet types.
@@ -78,6 +91,38 @@ type SecurityGroupSelectorTerm struct {
 	// Name is the security group name in ECS.
 	// This value is the name field, which is different from the name tag.
 	Name string `json:"name,omitempty"`
+}
+
+// ImageSelectorTerm defines selection logic for an image used by Karpenter to launch nodes.
+// If multiple fields are used for selection, the requirements are ANDed.
+type ImageSelectorTerm struct {
+	// Alias specifies which ACK image to select.
+	// Each alias consists of a family and an image version, specified as "family@version".
+	// Valid families include: aliyun3.
+	// Currently only supports version pinning to the latest image release, with that images version format (ex: "aliyun3@latest").
+	// Setting the version to latest will result in drift when a new Image is released. This is **not** recommended for production environments.
+	// +kubebuilder:validation:XValidation:message="'alias' is improperly formatted, must match the format 'family@version'",rule="self.matches('^[a-zA-Z0-9]*@.*$')"
+	// +kubebuilder:validation:XValidation:message="family is not supported, must be one of the following: 'aliyun3'",rule="self.find('^[^@]+') in ['aliyun3']"
+	// +kubebuilder:validation:MaxLength=30
+	// +optional
+	Alias string `json:"alias,omitempty"`
+	// Tags is a map of key/value tags used to select subsets
+	// Specifying '*' for a value selects all values for a given tag key.
+	// +kubebuilder:validation:XValidation:message="empty tag keys aren't supported",rule="self.all(k, k != '')"
+	// +kubebuilder:validation:MaxProperties:=20
+	// +optional
+	Tags map[string]string `json:"tags,omitempty"`
+	// ID is the image id in ECS
+	// +optional
+	ID string `json:"id,omitempty"`
+	// Name is the image name in ECS.
+	// This value is the name field, which is different from the name tag.
+	// +optional
+	Name string `json:"name,omitempty"`
+	// Owner is the image source.
+	// Default is system | self | public. If specified, only one of the following: "self", "system", "share", "public", and "marketplace"
+	// +optional
+	Owner string `json:"owner,omitempty"`
 }
 
 // KubeletConfiguration defines args to be used when configuring kubelet on provisioned nodes.
@@ -161,10 +206,45 @@ type ECSNodeClass struct {
 	Status ECSNodeClassStatus `json:"status,omitempty"`
 }
 
+// ImageFamily If an alias is specified, return alias, or be 'Custom' (enforced via validation).
+func (in *ECSNodeClass) ImageFamily() string {
+	if term, ok := lo.Find(in.Spec.ImageSelectorTerms, func(t ImageSelectorTerm) bool {
+		return t.Alias != ""
+	}); ok {
+		return ImageFamilyFromAlias(term.Alias)
+	}
+	// Unreachable: validation enforces that one of the above conditions must be met
+	return ImageFamilyCustom
+}
+
 // ECSNodeClassList contains a list of ECSNodeClass
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type ECSNodeClassList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []ECSNodeClass `json:"items"`
+}
+
+func ImageFamilyFromAlias(alias string) string {
+	components := strings.Split(alias, "@")
+	if len(components) != 2 {
+		log.Fatalf("failed to parse image alias %q, invalid format", alias)
+	}
+	family, ok := lo.Find([]string{
+		ImageFamilyAliyun3,
+	}, func(family string) bool {
+		return strings.ToLower(family) == components[0]
+	})
+	if !ok {
+		log.Fatalf("%q is an invalid alias family", components[0])
+	}
+	return family
+}
+
+func ImageVersionFromAlias(alias string) string {
+	components := strings.Split(alias, "@")
+	if len(components) != 2 {
+		log.Fatalf("failed to parse image alias %q, invalid format", alias)
+	}
+	return components[1]
 }
