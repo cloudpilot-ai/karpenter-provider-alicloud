@@ -143,7 +143,7 @@ func (p *DefaultProvider) UpdateInstanceTypeOfferings(ctx context.Context) error
 		return err
 	}
 
-	if resp.Body == nil || resp.Body.AvailableZones == nil || len(resp.Body.AvailableZones.AvailableZone) == 0 {
+	if resp == nil || resp.Body == nil || resp.Body.AvailableZones == nil || len(resp.Body.AvailableZones.AvailableZone) == 0 {
 		return errors.New("DescribeAvailableResourceWithOptions failed to return any instance types")
 	}
 
@@ -208,11 +208,8 @@ func getAllInstanceTypes(client *ecsclient.Client) ([]*ecsclient.DescribeInstanc
 			return nil, err
 		}
 
-		if resp.Body == nil || resp.Body.InstanceTypes == nil {
-			return nil, errors.New("DescribeInstanceTypesWithOptions failed to return any instance types")
-		}
-
-		if resp.Body.NextToken == nil || *resp.Body.NextToken == "" || len(resp.Body.InstanceTypes.InstanceType) == 0 {
+		if resp == nil || resp.Body == nil || resp.Body.NextToken == nil || resp.Body.InstanceTypes == nil ||
+			*resp.Body.NextToken == "" || len(resp.Body.InstanceTypes.InstanceType) == 0 {
 			break
 		}
 

@@ -23,6 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/karpenter/pkg/operator"
 
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/instance"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/pricing"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/utils/client"
 )
@@ -31,7 +32,8 @@ import (
 type Operator struct {
 	*operator.Operator
 
-	PricingProvider pricing.Provider
+	InstanceProvider instance.Provider
+	PricingProvider  pricing.Provider
 }
 
 func NewOperator(ctx context.Context, operator *operator.Operator) (context.Context, *Operator) {
@@ -47,9 +49,16 @@ func NewOperator(ctx context.Context, operator *operator.Operator) (context.Cont
 		*ecsClient.RegionId,
 	)
 
+	instanceProvider := instance.NewDefaultProvider(
+		ctx,
+		*ecsClient.RegionId,
+		ecsClient,
+	)
+
 	return ctx, &Operator{
 		Operator: operator,
 
-		PricingProvider: pricingProvider,
+		InstanceProvider: instanceProvider,
+		PricingProvider:  pricingProvider,
 	}
 }

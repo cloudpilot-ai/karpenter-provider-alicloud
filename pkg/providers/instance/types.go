@@ -16,12 +16,16 @@ limitations under the License.
 
 package instance
 
-import "time"
+import (
+	ecsclient "github.com/alibabacloud-go/ecs-20140526/v4/client"
+	"github.com/samber/lo"
+	karpv1 "sigs.k8s.io/karpenter/pkg/apis/v1"
+)
 
-// Instance is an internal data representation of either an ecs.Instance or an ecs.FleetInstance
+// Instance is an internal data representation of either an ecsclient.DescribeInstancesResponseBodyInstancesInstance
 // It contains all the common data that is needed to inject into the Machine from either of these responses
 type Instance struct {
-	LaunchTime       time.Time
+	CreationTime     string
 	State            string
 	ID               string
 	ImageID          string
@@ -31,5 +35,23 @@ type Instance struct {
 	SecurityGroupIDs []string
 	SubnetID         string
 	Tags             map[string]string
-	EFAEnabled       bool
+}
+
+func NewInstance(out *ecsclient.DescribeInstancesResponseBodyInstancesInstance) *Instance {
+	return &Instance{
+		CreationTime: *out.CreationTime,
+		State:        *out.Status,
+		ID:           *out.InstanceId,
+		ImageID:      *out.ImageId,
+		Type:         *out.InstanceType,
+		Zone:         *out.ZoneId,
+		CapacityType: lo.Ternary(out.SpotStrategy != nil && *out.SpotStrategy != "NoSpot", karpv1.CapacityTypeSpot, karpv1.CapacityTypeOnDemand),
+		SecurityGroupIDs: lo.Map(out.SecurityGroupIds.SecurityGroupId, func(securitygroup *string, _ int) string {
+			return *securitygroup
+		}),
+		SubnetID: *out.VpcAttributes.VSwitchId,
+		Tags: lo.SliceToMap(out.Tags.Tag, func(tag *ecsclient.DescribeInstancesResponseBodyInstancesInstanceTagsTag) (string, string) {
+			return *tag.TagKey, *tag.TagValue
+		}),
+	}
 }
