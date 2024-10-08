@@ -17,13 +17,13 @@ limitations under the License.
 package imagefamily
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"sort"
 	"time"
 
 	ecs "github.com/alibabacloud-go/ecs-20140526/v4/client"
-	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/apis/v1alpha1"
 	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -31,13 +31,9 @@ import (
 )
 
 const (
-	// AMIVersionLatest is the version used in EKS aliases to represent the latest version. This maps to different
-	// values in the SSM path, depending on the AMI type (e.g. "recommended" for AL2/AL2023)).
-	AMIVersionLatest = "latest"
-)
-
-var (
-	minTime time.Time = time.Unix(math.MinInt64, 0)
+	// ImageVersionLatest is the version used in aliases to represent the latest version. This maps to different
+	// values in the OOS path, depending on the Image type (e.g. "recommended" for Aliyun3)).
+	ImageVersionLatest = "latest"
 )
 
 type Image struct {
@@ -49,12 +45,12 @@ type Image struct {
 
 type Images []Image
 
-// Sort orders the AMIs by creation date in descending order.
-// If creation date is nil or two AMIs have the same creation date, the AMIs will be sorted by ID, which is guaranteed to be unique, in ascending order.
+// Sort orders the Iamges by creation date in descending order.
+// If creation date is nil or two Images have the same creation date, the Images will be sorted by ID, which is guaranteed to be unique, in ascending order.
 func (a Images) Sort() {
 	sort.Slice(a, func(i, j int) bool {
-		itime := parseTimeWithDefault(a[i].CreationDate, minTime)
-		jtime := parseTimeWithDefault(a[j].CreationDate, minTime)
+		itime := parseTimeWithDefault(a[i].CreationTime, minTime)
+		jtime := parseTimeWithDefault(a[j].CreationTime, minTime)
 
 		if itime.Unix() != jtime.Unix() {
 			return itime.Unix() > jtime.Unix()
@@ -75,13 +71,12 @@ type Variant string
 var (
 	VariantStandard Variant   = "standard"
 	VariantNvidia   Variant   = "nvidia"
-	VariantNeuron   Variant   = "neuron"
 	maxTime         time.Time = time.Unix(math.MaxInt64, 0)
 	minTime         time.Time = time.Unix(math.MinInt64, 0)
 )
 
 func NewVariant(v string) (Variant, error) {
-	var wellKnownVariants = sets.New(VariantStandard, VariantNvidia, VariantNeuron)
+	var wellKnownVariants = sets.New(VariantStandard, VariantNvidia)
 	variant := Variant(v)
 	if !wellKnownVariants.Has(variant) {
 		return variant, fmt.Errorf("%q is not a well-known variant", variant)
@@ -92,14 +87,9 @@ func NewVariant(v string) (Variant, error) {
 func (v Variant) Requirements() scheduling.Requirements {
 	switch v {
 	case VariantStandard:
-		return scheduling.NewRequirements(
-			scheduling.NewRequirement(v1alpha1.LabelInstanceAcceleratorCount, corev1.NodeSelectorOpDoesNotExist),
-			scheduling.NewRequirement(v1alpha1.LabelInstanceGPUCount, corev1.NodeSelectorOpDoesNotExist),
-		)
+		// TODO: return some requirements
 	case VariantNvidia:
-		return scheduling.NewRequirements(scheduling.NewRequirement(v1alpha1.LabelInstanceGPUCount, corev1.NodeSelectorOpExists))
-	case VariantNeuron:
-		return scheduling.NewRequirements(scheduling.NewRequirement(v1alpha1.LabelInstanceAcceleratorCount, corev1.NodeSelectorOpExists))
+		// TODO: return some requirements
 	}
 	return nil
 }
@@ -107,18 +97,22 @@ func (v Variant) Requirements() scheduling.Requirements {
 type DescribeImageQuery struct {
 	*ecs.DescribeImagesRequest
 	// KnownRequirements is a map from image IDs to a set of known requirements.
-	// When discovering image IDs via SSM we know additional requirements which aren't surfaced by ec2:DescribeImage (e.g. GPU / Neuron compatibility)
-	// Sometimes, an image may have multiple sets of known requirements. For example, the AL2 GPU AMI is compatible with both Neuron and Nvidia GPU
-	// instances, which means we need a set of requirements for either instance type.
-	KnownRequirements map[string][]scheduling.Requirements
+	// When discovering image IDs via OOS we know additional requirements which aren't surfaced by ecs:DescribeImage (e.g. GPU / Neuron compatibility)
+	// Sometimes, an image may have multiple sets of known requirements.
+	KnownRequirements []scheduling.Requirements
 }
 
-func (q DescribeImageQuery) RequirementsForImageWithArchitecture(image string, arch string) []scheduling.Requirements {
-	if knownRequirements, ok := q.KnownRequirements[image]; ok {
-		return lo.Map(knownRequirements, func(r scheduling.Requirements, _ int) scheduling.Requirements {
+func (q *DescribeImageQuery) RequirementsForImageWithArchitecture(arch string) []scheduling.Requirements {
+	if len(q.KnownRequirements) > 0 {
+		return lo.Map(q.KnownRequirements, func(r scheduling.Requirements, _ int) scheduling.Requirements {
 			r.Add(scheduling.NewRequirement(corev1.LabelArchStable, corev1.NodeSelectorOpIn, arch))
 			return r
 		})
 	}
 	return []scheduling.Requirements{scheduling.NewRequirements(scheduling.NewRequirement(corev1.LabelArchStable, corev1.NodeSelectorOpIn, arch))}
+}
+
+// ImageFamily can be implemented to override the default logic for generating dynamic launch template parameters
+type ImageFamily interface {
+	DescribeImageQuery(ctx context.Context, oosProvider oos.Provider, k8sVersion string, version string) ([]DescribeImageQuery, error)
 }

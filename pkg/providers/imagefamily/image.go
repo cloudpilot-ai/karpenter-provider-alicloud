@@ -19,11 +19,11 @@ package imagefamily
 import (
 	"context"
 	"fmt"
-	util "github.com/alibabacloud-go/tea-utils/v2/service"
 	"sync"
 	"time"
 
 	ecs "github.com/alibabacloud-go/ecs-20140526/v4/client"
+	util "github.com/alibabacloud-go/tea-utils/v2/service"
 	"github.com/alibabacloud-go/tea/tea"
 	"github.com/mitchellh/hashstructure/v2"
 	"github.com/patrickmn/go-cache"
@@ -36,7 +36,7 @@ import (
 )
 
 type Provider interface {
-	List(ctx context.Context, nodeClass *v1alpha1.ECSNodeClass) (AMIs, error)
+	List(ctx context.Context, nodeClass *v1alpha1.ECSNodeClass) (Images, error)
 }
 
 type DefaultProvider struct {
@@ -47,24 +47,6 @@ type DefaultProvider struct {
 	cm              *pretty.ChangeMonitor
 	versionProvider version.Provider
 	oosProvider     oos.Provider
-}
-
-// DefaultFamily provides default values for ImageFamilies that compose it
-type DefaultFamily struct{}
-
-// Options define the static launch template parameters
-type Options struct {
-	ClusterName string
-	// Level-triggered fields that may change out of sync.
-	SecurityGroups []v1alpha1.SecurityGroup
-	Tags           map[string]string
-	Labels         map[string]string `hash:"ignore"`
-	NodeClassName  string
-}
-
-// AMIFamily can be implemented to override the default logic for generating dynamic launch template parameters
-type ImageFamily interface {
-	DescribeImageQuery(ctx context.Context, oosProvider oos.Provider, k8sVersion string, version string) (DescribeImageQuery, error)
 }
 
 func NewDefaultProvider(region string, versionProvider version.Provider, oosProvider oos.Provider, ecsapi ecs.Client, cache *cache.Cache) *DefaultProvider {
@@ -78,25 +60,25 @@ func NewDefaultProvider(region string, versionProvider version.Provider, oosProv
 	}
 }
 
-// List Get Returning a list of AMIs with its associated requirements
+// List Get Returning a list of Images with its associated requirements
 func (p *DefaultProvider) List(ctx context.Context, nodeClass *v1alpha1.ECSNodeClass) (Images, error) {
 	p.Lock()
 	defer p.Unlock()
 	queries, err := p.DescribeImageQueries(ctx, nodeClass)
 	if err != nil {
-		return nil, fmt.Errorf("getting AMI queries, %w", err)
+		return nil, fmt.Errorf("getting image queries, %w", err)
 	}
-	amis, err := p.amis(queries)
+	images, err := p.GetImages(queries)
 	if err != nil {
 		return nil, err
 	}
-	amis.Sort()
-	uniqueAMIs := lo.Uniq(lo.Map(amis, func(a Image, _ int) string { return a.ImageID }))
-	if p.cm.HasChanged(fmt.Sprintf("amis/%s", nodeClass.Name), uniqueAMIs) {
+	images.Sort()
+	uniqueImages := lo.Uniq(lo.Map(images, func(a Image, _ int) string { return a.ImageID }))
+	if p.cm.HasChanged(fmt.Sprintf("images/%s", nodeClass.Name), uniqueImages) {
 		log.FromContext(ctx).WithValues(
-			"ids", uniqueAMIs).V(1).Info("discovered amis")
+			"ids", uniqueImages).V(1).Info("discovered images")
 	}
-	return amis, nil
+	return images, nil
 }
 
 func (p *DefaultProvider) DescribeImageQueries(ctx context.Context, nodeClass *v1alpha1.ECSNodeClass) ([]DescribeImageQuery, error) {
@@ -109,12 +91,12 @@ func (p *DefaultProvider) DescribeImageQueries(ctx context.Context, nodeClass *v
 		if err != nil {
 			return nil, fmt.Errorf("getting kubernetes version, %w", err)
 		}
-		imageFamily := GetImageFamily(v1alpha1.ImageFamilyFromAlias(term.Alias), nil)
-		query, err := imageFamily.DescribeImageQuery(ctx, p.oosProvider, kubernetesVersion, nodeClass.AMIVersion())
+		imageFamily := GetImageFamily(v1alpha1.ImageFamilyFromAlias(term.Alias))
+		query, err := imageFamily.DescribeImageQuery(ctx, p.oosProvider, kubernetesVersion, v1alpha1.ImageVersionFromAlias(term.Alias))
 		if err != nil {
 			return nil, err
 		}
-		return []DescribeImageQuery{query}, nil
+		return query, nil
 	}
 
 	var queries []DescribeImageQuery
@@ -149,13 +131,13 @@ func (p *DefaultProvider) DescribeImageQueries(ctx context.Context, nodeClass *v
 }
 
 //nolint:gocyclo
-func (p *DefaultProvider) amis(queries []DescribeImageQuery) (Images, error) {
+func (p *DefaultProvider) GetImages(queries []DescribeImageQuery) (Images, error) {
 	hash, err := hashstructure.Hash(queries, hashstructure.FormatV2, &hashstructure.HashOptions{SlicesAsSets: true})
 	if err != nil {
 		return nil, err
 	}
 	if images, ok := p.cache.Get(fmt.Sprintf("%d", hash)); ok {
-		// Ensure what's returned from this function is a deep-copy of AMIs so alterations
+		// Ensure what's returned from this function is a deep-copy of Images so alterations
 		// to the data don't affect the original
 		return append(Images{}, images.(Images)...), nil
 	}
@@ -171,7 +153,7 @@ func (p *DefaultProvider) amis(queries []DescribeImageQuery) (Images, error) {
 
 			// Each image may have multiple associated sets of requirements. For example, an image may be compatible with Neuron instances
 			// and GPU instances. In that case, we'll have a set of requirements for each, and will create one "image" for each.
-			for _, reqs := range query.RequirementsForImageWithArchitecture(lo.FromPtr(image.ImageId), arch) {
+			for _, reqs := range query.RequirementsForImageWithArchitecture(arch) {
 				// If we already have an image with the same set of requirements, but this image is newer, replace the previous image.
 				reqsHash := lo.Must(hashstructure.Hash(reqs.NodeSelectorRequirements(), hashstructure.FormatV2, &hashstructure.HashOptions{SlicesAsSets: true}))
 				if v, ok := images[reqsHash]; ok {
@@ -224,13 +206,14 @@ func (p *DefaultProvider) describeImages(request *ecs.DescribeImagesRequest, pro
 	return nil
 }
 
-func GetImageFamily(imageFamily string, options *Options) ImageFamily {
+// TODO: move it to resolver.go
+func GetImageFamily(imageFamily string) ImageFamily {
 	switch imageFamily {
-	case v1alpha1.AMIFamilyCustom:
-		return &Custom{Options: options}
-	case v1alpha1.AMIFamilyAliyun3:
-		return &Aliyun3{Options: options}
+	case v1alpha1.ImageFamilyCustom:
+		return &Custom{}
+	case v1alpha1.ImageFamilyAliyun3:
+		return &Aliyun3{}
 	default:
-		return &Aliyun3{Options: options}
+		return &Aliyun3{}
 	}
 }

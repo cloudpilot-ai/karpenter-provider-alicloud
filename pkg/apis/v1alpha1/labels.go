@@ -79,11 +79,11 @@ var (
 	}
 	AMIFamilyBottlerocket                          = "Bottlerocket"
 	AMIFamilyAL2                                   = "AL2"
-	AMIFamilyAliyun3                               = "Aliyun3"
+	ImageFamilyAliyun3                             = "Aliyun3"
 	AMIFamilyUbuntu                                = "Ubuntu"
 	AMIFamilyWindows2019                           = "Windows2019"
 	AMIFamilyWindows2022                           = "Windows2022"
-	AMIFamilyCustom                                = "Custom"
+	ImageFamilyCustom                              = "Custom"
 	Windows2019                                    = "2019"
 	Windows2022                                    = "2022"
 	WindowsCore                                    = "Core"

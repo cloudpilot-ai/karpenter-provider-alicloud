@@ -19,11 +19,9 @@ package imagefamily
 import "context"
 
 type Aliyun3 struct {
-	DefaultFamily
-	*Options
 }
 
-func (a Aliyun3) DescribeImageQuery(ctx context.Context, oosProvider oos.Provider, k8sVersion string, amiVersion string) (DescribeImageQuery, error) {
+func (a Aliyun3) DescribeImageQuery(ctx context.Context, oosProvider oos.Provider, k8sVersion string, imageVersion string) ([]DescribeImageQuery, error) {
 	//TODO implement me
 	panic("implement me")
 }

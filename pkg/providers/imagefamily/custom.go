@@ -19,22 +19,21 @@ package imagefamily
 import (
 	"context"
 
-	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/apis/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/karpenter/pkg/cloudprovider"
+
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/apis/v1alpha1"
 )
 
 type Custom struct {
-	DefaultFamily
-	*Options
 }
 
-// UserData returns the default userdata script for the AMI Family
+// UserData returns the default userdata script for the Image Family
 func (c Custom) UserData(_ *v1alpha1.KubeletConfiguration, _ []corev1.Taint, _ map[string]string, _ *string, _ []*cloudprovider.InstanceType, customUserData *string) {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (c Custom) DescribeImageQuery(_ context.Context, _ oos.Provider, _ string, _ string) (DescribeImageQuery, error) {
-	return DescribeImageQuery{}, nil
+func (c Custom) DescribeImageQuery(_ context.Context, _ oos.Provider, _ string, _ string) ([]DescribeImageQuery, error) {
+	return []DescribeImageQuery{}, nil
 }
