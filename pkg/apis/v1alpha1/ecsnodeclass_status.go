@@ -26,10 +26,24 @@ type VSwitch struct {
 	ZoneID string `json:"zoneID,omitempty"`
 }
 
+// SecurityGroup contains resolved SecurityGroup selector values utilized for node launch
+type SecurityGroup struct {
+	// ID of the security group
+	// +required
+	ID string `json:"id"`
+	// Name of the security group
+	// +optional
+	Name string `json:"name,omitempty"`
+}
+
 // ECSNodeClassStatus contains the resolved state of the ECSNodeClass
 type ECSNodeClassStatus struct {
 	// VSwitches contains the current VSwitch values that are available to the
 	// cluster under the vSwitch selectors.
 	// +optional
 	VSwitches []VSwitch `json:"vSwitches,omitempty"`
+	// SecurityGroups contains the current Security Groups values that are available to the
+	// cluster under the SecurityGroups selectors.
+	// +optional
+	SecurityGroups []SecurityGroup `json:"securityGroups,omitempty"`
 }
