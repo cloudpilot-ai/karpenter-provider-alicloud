@@ -30,6 +30,14 @@ type ECSNodeClassSpec struct {
 	// +kubebuilder:validation:MaxItems:=30
 	// +required
 	VSwitchSelectorTerms []VSwitchSelectorTerm `json:"vSwitchSelectorTerms" hash:"ignore"`
+	// KubeletConfiguration defines args to be used when configuring kubelet on provisioned nodes.
+	// They are a subset of the upstream types, recognizing not all options may be supported.
+	// Wherever possible, the types and names should reflect the upstream kubelet types.
+	// +kubebuilder:validation:XValidation:message="imageGCHighThresholdPercent must be greater than imageGCLowThresholdPercent",rule="has(self.imageGCHighThresholdPercent) && has(self.imageGCLowThresholdPercent) ?  self.imageGCHighThresholdPercent > self.imageGCLowThresholdPercent  : true"
+	// +kubebuilder:validation:XValidation:message="evictionSoft OwnerKey does not have a matching evictionSoftGracePeriod",rule="has(self.evictionSoft) ? self.evictionSoft.all(e, (e in self.evictionSoftGracePeriod)):true"
+	// +kubebuilder:validation:XValidation:message="evictionSoftGracePeriod OwnerKey does not have a matching evictionSoft",rule="has(self.evictionSoftGracePeriod) ? self.evictionSoftGracePeriod.all(e, (e in self.evictionSoft)):true"
+	// +optional
+	KubeletConfiguration *KubeletConfiguration `json:"kubeletConfiguration,omitempty"`
 }
 
 // VSwitchSelectorTerm defines selection logic for a vSwitch used by Karpenter to launch nodes.
