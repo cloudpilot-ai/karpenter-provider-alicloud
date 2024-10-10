@@ -4,15 +4,16 @@ go 1.23
 
 require (
 	github.com/alibabacloud-go/darabonba-openapi/v2 v2.0.10
-	github.com/alibabacloud-go/ecs-20140526/v4 v4.25.1
+	github.com/alibabacloud-go/ecs-20140526/v4 v4.26.1
 	github.com/alibabacloud-go/tea v1.2.2
 	github.com/alibabacloud-go/tea-utils/v2 v2.0.6
 	github.com/alibabacloud-go/vpc-20160428/v6 v6.10.4
 	github.com/aliyun/aliyun-cli v0.0.0-20240925084117-158a70e275f0
 	github.com/awslabs/operatorpkg v0.0.0-20240805231134-67d0acfb6306
+	github.com/cloudpilot-ai/priceserver v0.0.0-20241009154424-d3cb0d822cab
 	github.com/mitchellh/hashstructure/v2 v2.0.2
 	github.com/patrickmn/go-cache v2.1.0+incompatible
-	github.com/samber/lo v1.46.0
+	github.com/samber/lo v1.47.0
 	go.uber.org/multierr v1.11.0
 	k8s.io/api v0.30.3
 	k8s.io/apimachinery v0.30.3
@@ -26,7 +27,13 @@ require (
 require (
 	contrib.go.opencensus.io/exporter/ocagent v0.7.1-0.20200907061046-05415f1de66d // indirect
 	contrib.go.opencensus.io/exporter/prometheus v0.4.0 // indirect
+	github.com/alibabacloud-go/alibabacloud-gateway-pop v0.0.6 // indirect
 	github.com/alibabacloud-go/alibabacloud-gateway-spi v0.0.5 // indirect
+	github.com/alibabacloud-go/darabonba-array v0.1.0 // indirect
+	github.com/alibabacloud-go/darabonba-encode-util v0.0.2 // indirect
+	github.com/alibabacloud-go/darabonba-map v0.0.2 // indirect
+	github.com/alibabacloud-go/darabonba-signature-util v0.0.7 // indirect
+	github.com/alibabacloud-go/darabonba-string v1.0.2 // indirect
 	github.com/alibabacloud-go/debug v1.0.1 // indirect
 	github.com/alibabacloud-go/endpoint-util v1.1.0 // indirect
 	github.com/alibabacloud-go/openapi-util v0.1.0 // indirect
@@ -75,7 +82,7 @@ require (
 	github.com/prometheus/procfs v0.12.0 // indirect
 	github.com/prometheus/statsd_exporter v0.21.0 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
-	github.com/spf13/cobra v1.7.0 // indirect
+	github.com/spf13/cobra v1.8.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/tjfoc/gmsm v1.4.1 // indirect
 	go.opencensus.io v0.24.0 // indirect
@@ -105,6 +112,7 @@ require (
 	k8s.io/cloud-provider v0.30.3 // indirect
 	k8s.io/component-base v0.30.3 // indirect
 	k8s.io/csi-translation-lib v0.30.3 // indirect
+	k8s.io/klog v1.0.0 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20240228011516-70dd3763d340 // indirect
 	knative.dev/pkg v0.0.0-20230712131115-7051d301e7f4 // indirect

@@ -77,6 +77,9 @@ tidy: ## Run "go mod tidy"
 download: ## Run "go mod download"
 	go mod download
 
+codegen: ## Auto generate files based on AlibabaCloud APIs
+	./hack/codegen.sh
+
 .PHONY: help presubmit run ut-test coverage update verify image apply delete toolchain tidy download
 
 define newline
