@@ -120,10 +120,8 @@ github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1/go.mod h1:Q3SI9o4m/ZMn
 github.com/clbanning/mxj/v2 v2.5.5 h1:oT81vUeEiQQ/DcHbzSytRngP6Ky9O+L+0Bw0zSJag9E=
 github.com/clbanning/mxj/v2 v2.5.5/go.mod h1:hNiWqW14h+kc+MdF9C6/YoRfjEJoR3ou6tn/Qo+ve2s=
 github.com/client9/misspell v0.3.4/go.mod h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDkc90ppPyw=
-github.com/cloudpilot-ai/priceserver v0.0.0-20241009125028-12be3a49e1fd h1:baHLpb7l82irpEwq08ThLZiBHNn3jVp5fWDW122mVU4=
-github.com/cloudpilot-ai/priceserver v0.0.0-20241009125028-12be3a49e1fd/go.mod h1:NORch8twW9a+z2hSHYz/iKKGSQmts913GsveSHQbnRM=
-github.com/cloudpilot-ai/priceserver v0.0.0-20241009154424-d3cb0d822cab h1:VA7R4Z5wS/Kz4Cu1kMflsrJmS7SzskeQGPW8tv82Ckg=
-github.com/cloudpilot-ai/priceserver v0.0.0-20241009154424-d3cb0d822cab/go.mod h1:NORch8twW9a+z2hSHYz/iKKGSQmts913GsveSHQbnRM=
+github.com/cloudpilot-ai/priceserver v0.0.0-20241011010411-15ac0e19a857 h1:7bPI6/lr/U+posZQ0Dhx17lFg3/kSH6rmGgLZYQdMdw=
+github.com/cloudpilot-ai/priceserver v0.0.0-20241011010411-15ac0e19a857/go.mod h1:cq38WUGmV3Bfwol077N6pdMZds1JvoFE2MU8yiDbf64=
 github.com/cncf/udpa/go v0.0.0-20191209042840-269d4d468f6f/go.mod h1:M8M6+tZqaGXZJjfX53e64911xZQV5JYwmTeXPW+k8Sc=
 github.com/cpuguy83/go-md2man/v2 v2.0.3/go.mod h1:tgQtvFlXSQOSOSIRvRPT7W67SCa46tRHOmNcaadrF8o=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
