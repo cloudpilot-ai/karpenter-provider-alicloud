@@ -17,39 +17,60 @@ limitations under the License.
 package instance
 
 import (
+	"time"
+
 	ecsclient "github.com/alibabacloud-go/ecs-20140526/v4/client"
 	"github.com/samber/lo"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	karpv1 "sigs.k8s.io/karpenter/pkg/apis/v1"
+
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/utils"
+)
+
+const (
+	// Ref: https://api.aliyun.com/api/Ecs/2014-05-26/DescribeInstances
+	InstanceStatusPending  = "Pending"
+	InstanceStatusRunning  = "Running"
+	InstanceStatusStarting = "Starting"
+	InstanceStatusStopping = "Stopping"
+	InstanceStatusStopped  = "Stopped"
 )
 
 // Instance is an internal data representation of either an ecsclient.DescribeInstancesResponseBodyInstancesInstance
 // It contains all the common data that is needed to inject into the Machine from either of these responses
 type Instance struct {
-	CreationTime     string
-	State            string
-	ID               string
-	ImageID          string
-	Type             string
-	Zone             string
-	CapacityType     string
-	SecurityGroupIDs []string
-	SubnetID         string
-	Tags             map[string]string
+	CreationTime     time.Time         `json:"creationTime"`
+	Status           string            `json:"status"`
+	ID               string            `json:"id"`
+	ImageID          string            `json:"imageId"`
+	Type             string            `json:"type"`
+	Region           string            `json:"region"`
+	Zone             string            `json:"zone"`
+	CapacityType     string            `json:"capacityType"`
+	SecurityGroupIDs []string          `json:"securityGroupIds"`
+	VSwitchID        string            `json:"vSwitchId"`
+	Tags             map[string]string `json:"tags"`
 }
 
 func NewInstance(out *ecsclient.DescribeInstancesResponseBodyInstancesInstance) *Instance {
+	creationTime, err := utils.ParseISO8601(*out.CreationTime)
+	if err != nil {
+		log.Log.Error(err, "Failed to parse creation time")
+	}
+
 	return &Instance{
-		CreationTime: *out.CreationTime,
-		State:        *out.Status,
+		CreationTime: creationTime,
+		Status:       *out.Status,
 		ID:           *out.InstanceId,
 		ImageID:      *out.ImageId,
 		Type:         *out.InstanceType,
+		Region:       *out.RegionId,
 		Zone:         *out.ZoneId,
 		CapacityType: lo.Ternary(out.SpotStrategy != nil && *out.SpotStrategy != "NoSpot", karpv1.CapacityTypeSpot, karpv1.CapacityTypeOnDemand),
 		SecurityGroupIDs: lo.Map(out.SecurityGroupIds.SecurityGroupId, func(securitygroup *string, _ int) string {
 			return *securitygroup
 		}),
-		SubnetID: *out.VpcAttributes.VSwitchId,
+		VSwitchID: *out.VpcAttributes.VSwitchId,
 		Tags: lo.SliceToMap(out.Tags.Tag, func(tag *ecsclient.DescribeInstancesResponseBodyInstancesInstanceTagsTag) (string, string) {
 			return *tag.TagKey, *tag.TagValue
 		}),

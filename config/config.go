@@ -14,10 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package time
+package config
 
-import "time"
-
-func ParseISO8601(timeStr string) (time.Time, error) {
-	return time.Parse(timeStr, "2017-12-10T04:04Z")
-}
+const CloudName = "alibabacloud"
