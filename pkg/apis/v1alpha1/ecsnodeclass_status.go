@@ -16,6 +16,16 @@ limitations under the License.
 
 package v1alpha1
 
+import (
+	"github.com/awslabs/operatorpkg/status"
+)
+
+const (
+	ConditionTypeVSwitchsReady       = "VSwitchsReady"
+	ConditionTypeSecurityGroupsReady = "SecurityGroupsReady"
+	ConditionTypeInstanceRAMReady    = "InstanceRAMReady"
+)
+
 // VSwitch contains resolved VSwitch selector values utilized for node launch
 type VSwitch struct {
 	// ID of the vSwitch
@@ -46,4 +56,23 @@ type ECSNodeClassStatus struct {
 	// cluster under the SecurityGroups selectors.
 	// +optional
 	SecurityGroups []SecurityGroup `json:"securityGroups,omitempty"`
+	// Conditions contains signals for health and readiness
+	// +optional
+	Conditions []status.Condition `json:"conditions,omitempty"`
+}
+
+func (in *ECSNodeClass) StatusConditions() status.ConditionSet {
+	return status.NewReadyConditions(
+		ConditionTypeVSwitchsReady,
+		ConditionTypeSecurityGroupsReady,
+		ConditionTypeInstanceRAMReady,
+	).For(in)
+}
+
+func (in *ECSNodeClass) GetConditions() []status.Condition {
+	return in.Status.Conditions
+}
+
+func (in *ECSNodeClass) SetConditions(conditions []status.Condition) {
+	in.Status.Conditions = conditions
 }
