@@ -43,11 +43,11 @@ func NewOperator(ctx context.Context, operator *operator.Operator) (context.Cont
 		os.Exit(1)
 	}
 
-	pricingProvider := pricing.NewDefaultProvider(
-		ctx,
-		ecsClient,
-		*ecsClient.RegionId,
-	)
+	pricingProvider, err := pricing.NewDefaultProvider(ctx, *ecsClient.RegionId)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to create pricing provider")
+		os.Exit(1)
+	}
 
 	instanceProvider := instance.NewDefaultProvider(
 		ctx,
