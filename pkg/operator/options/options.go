@@ -25,6 +25,8 @@ import (
 
 	coreoptions "sigs.k8s.io/karpenter/pkg/operator/options"
 	"sigs.k8s.io/karpenter/pkg/utils/env"
+
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/utils"
 )
 
 func init() {
@@ -34,15 +36,17 @@ func init() {
 type optionsKey struct{}
 
 type Options struct {
-	ClusterCABundle string
-	ClusterName     string
-	ClusterEndpoint string
+	ClusterCABundle         string
+	ClusterName             string
+	ClusterEndpoint         string
+	VMMemoryOverheadPercent float64
 }
 
 func (o *Options) AddFlags(fs *coreoptions.FlagSet) {
 	fs.StringVar(&o.ClusterCABundle, "cluster-ca-bundle", env.WithDefaultString("CLUSTER_CA_BUNDLE", ""), "Cluster CA bundle for nodes to use for TLS connections with the API server. If not set, this is taken from the controller's TLS configuration.")
 	fs.StringVar(&o.ClusterName, "cluster-name", env.WithDefaultString("CLUSTER_NAME", ""), "[REQUIRED] The kubernetes cluster name for resource discovery.")
 	fs.StringVar(&o.ClusterEndpoint, "cluster-endpoint", env.WithDefaultString("CLUSTER_ENDPOINT", ""), "The external kubernetes cluster endpoint for new nodes to connect with. If not specified, will discover the cluster endpoint using DescribeCluster API.")
+	fs.Float64Var(&o.VMMemoryOverheadPercent, "vm-memory-overhead-percent", utils.WithDefaultFloat64("VM_MEMORY_OVERHEAD_PERCENT", 0.075), "The VM memory overhead as a percent that will be subtracted from the total memory for all instance types.")
 }
 
 func (o *Options) Parse(fs *coreoptions.FlagSet, args ...string) error {

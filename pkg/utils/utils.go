@@ -18,7 +18,9 @@ package utils
 
 import (
 	"fmt"
+	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -79,4 +81,18 @@ func PrettySlice[T any](s []T, maxItems int) string {
 		fmt.Fprint(&sb, elem)
 	}
 	return sb.String()
+}
+
+// WithDefaultFloat64 returns the float64 value of the supplied environment variable or, if not present,
+// the supplied default value. If the float64 conversion fails, returns the default
+func WithDefaultFloat64(key string, def float64) float64 {
+	val, ok := os.LookupEnv(key)
+	if !ok {
+		return def
+	}
+	f, err := strconv.ParseFloat(val, 64)
+	if err != nil {
+		return def
+	}
+	return f
 }
