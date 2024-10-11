@@ -26,15 +26,20 @@ import (
 	"sigs.k8s.io/karpenter/pkg/cloudprovider"
 	"sigs.k8s.io/karpenter/pkg/events"
 
+	nodeclaimgarbagecollection "github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/controllers/nodeclaim/garbagecollection"
+	nodeclaimtagging "github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/controllers/nodeclaim/tagging"
 	controllerspricing "github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/controllers/providers/pricing"
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/instance"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/pricing"
 )
 
 func NewControllers(ctx context.Context, mgr manager.Manager, clk clock.Clock, kubeClient client.Client, recorder events.Recorder,
-	cloudProvider cloudprovider.CloudProvider, pricingProvider pricing.Provider) []controller.Controller {
+	cloudProvider cloudprovider.CloudProvider, instanceProvider instance.Provider, pricingProvider pricing.Provider) []controller.Controller {
 
 	controllers := []controller.Controller{
 		controllerspricing.NewController(pricingProvider),
+		nodeclaimgarbagecollection.NewController(kubeClient, cloudProvider),
+		nodeclaimtagging.NewController(kubeClient, instanceProvider),
 	}
 	return controllers
 }

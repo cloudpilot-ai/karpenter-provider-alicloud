@@ -77,6 +77,7 @@ github.com/awslabs/operatorpkg/controller
 github.com/awslabs/operatorpkg/metrics
 github.com/awslabs/operatorpkg/object
 github.com/awslabs/operatorpkg/option
+github.com/awslabs/operatorpkg/reasonable
 github.com/awslabs/operatorpkg/singleton
 github.com/awslabs/operatorpkg/status
 # github.com/beorn7/perks v1.0.1
