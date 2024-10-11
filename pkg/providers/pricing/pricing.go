@@ -19,22 +19,22 @@ package pricing
 import (
 	"context"
 	_ "embed"
+	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
-	ecsclient "github.com/alibabacloud-go/ecs-20140526/v4/client"
+	"github.com/cloudpilot-ai/priceserver/pkg/apis"
+	"github.com/cloudpilot-ai/priceserver/pkg/tools"
 	"github.com/samber/lo"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/karpenter/pkg/utils/pretty"
 
 	utilsobject "github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/utils/object"
 )
 
-var (
-	//go:embed initial-on-demand-prices.json
-	initialOnDemandPricesData []byte
-
-	initialOnDemandPrices = *utilsobject.JSONUnmarshal[map[string]map[string]float64](initialOnDemandPricesData)
-)
+//go:embed initial-on-demand-prices.json
+var initialOnDemandPricesData []byte
 
 const defaultRegion = "cn-qingdao"
 
@@ -47,15 +47,17 @@ type Provider interface {
 	UpdateSpotPricing(context.Context) error
 }
 
-// DefaultProvider provides actual pricing data to the Ali cloud provider to allow it to make more informed decisions
-// regarding which instances to launch.  This is initialized at startup with a periodically updated static price list to
+// DefaultProvider provides actual pricing data to the AlibabaCloud provider to allow it to make more informed decisions
+// regarding which instances to launch. This is initialized at startup with a periodically updated static price list to
 // support running in locations where pricing data is unavailable.  In those cases the static pricing data provides a
 // relative ordering that is still more accurate than our previous pricing model.  In the event that a pricing update
 // fails, the previous pricing information is retained and used which may be the static initial pricing data if pricing
 // updates never succeed.
 type DefaultProvider struct {
-	ecsClient *ecsclient.Client
-	// pricing pricingiface.PricingAPI
+	muPriceLastUpdatedTimestamp sync.RWMutex
+	priceLastUpdatedTimestamp   time.Time
+	alibabaCloudPriceClient     tools.QueryClientInterface
+
 	region string
 	cm     *pretty.ChangeMonitor
 
@@ -84,17 +86,30 @@ func newZonalPricing(defaultPrice float64) zonal {
 	return z
 }
 
-func NewDefaultProvider(_ context.Context, ecsClient *ecsclient.Client, region string) *DefaultProvider {
+const (
+	// defaultPriceQueryClient defines the default query endpoint
+	// we do not use the alibabacloud sdk because it has a rate limit which not satisfied with our request frequency
+	// you can build your own query server with repo: https://github.com/cloudpilot-ai/priceserver
+	// TODO: update to production endpoint latter
+	defaultPriceQueryEndpoint = "https://pre-price.cloudpilot.ai"
+)
+
+func NewDefaultProvider(ctx context.Context, region string) (*DefaultProvider, error) {
+	queryClient, err := tools.NewQueryClient(defaultPriceQueryEndpoint, tools.AlibabaCloudProvider, region)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "unable to create query client")
+		return nil, err
+	}
 	p := &DefaultProvider{
-		region:    region,
-		ecsClient: ecsClient,
+		region:                  region,
+		alibabaCloudPriceClient: queryClient,
 
 		cm: pretty.NewChangeMonitor(),
 	}
 	// sets the pricing data from the static default state for the provider
 	p.Reset()
 
-	return p
+	return p, nil
 }
 
 // InstanceTypes returns the list of all instance types for which either a spot or on-demand price is known.
@@ -147,13 +162,16 @@ func (p *DefaultProvider) LivenessProbe(_ *http.Request) error {
 	// ensure we don't deadlock and nolint for the empty critical section
 	p.muOnDemand.Lock()
 	p.muSpot.Lock()
+	p.muPriceLastUpdatedTimestamp.Lock()
 	//nolint: staticcheck
 	p.muOnDemand.Unlock()
 	p.muSpot.Unlock()
+	p.muPriceLastUpdatedTimestamp.Unlock()
 	return nil
 }
 
 func (p *DefaultProvider) Reset() {
+	initialOnDemandPrices := *utilsobject.JSONUnmarshal[map[string]map[string]float64](initialOnDemandPricesData)
 	// see if we've got region specific pricing data
 	staticPricing, ok := initialOnDemandPrices[p.region]
 	if !ok {
@@ -167,13 +185,75 @@ func (p *DefaultProvider) Reset() {
 	p.spotPricingUpdated = false
 }
 
-func (p *DefaultProvider) UpdateOnDemandPricing(context.Context) error {
+func (p *DefaultProvider) UpdateOnDemandPricing(ctx context.Context) error {
+	if err := p.syncPricingData(ctx); err != nil {
+		return err
+	}
 
-	// TODO: implement me
+	prices := p.alibabaCloudPriceClient.ListInstancesDetails(p.region)
+	if prices == nil || len(prices.InstanceTypePrices) == 0 {
+		err := fmt.Errorf("no price info available for region %s", p.region)
+		log.FromContext(ctx).Error(err, "failed to get on-demand pricing data from alibaba cloud")
+		return err
+	}
+
+	p.muOnDemand.Lock()
+	defer p.muOnDemand.Unlock()
+	p.onDemandPrices = lo.MapEntries(prices.InstanceTypePrices, func(key string, value *apis.InstanceTypePrice) (string, float64) {
+		return key, value.OnDemandPricePerHour
+	})
+
 	return nil
 }
-func (p *DefaultProvider) UpdateSpotPricing(context.Context) error {
+func (p *DefaultProvider) UpdateSpotPricing(ctx context.Context) error {
+	if err := p.syncPricingData(ctx); err != nil {
+		return err
+	}
 
-	// TODO: implement me
+	prices := p.alibabaCloudPriceClient.ListInstancesDetails(p.region)
+	if prices == nil || len(prices.InstanceTypePrices) == 0 {
+		err := fmt.Errorf("no price info available for region %s", p.region)
+		log.FromContext(ctx).Error(err, "failed to get spot pricing data from alibaba cloud")
+		return err
+	}
+
+	totalOfferings := 0
+	p.muSpot.Lock()
+	defer p.muSpot.Unlock()
+	for instanceType, priceInfo := range prices.InstanceTypePrices {
+		if _, ok := p.spotPrices[instanceType]; !ok {
+			p.spotPrices[instanceType] = newZonalPricing(0)
+		}
+		for zone, price := range priceInfo.SpotPricePerHour {
+			p.spotPrices[instanceType].prices[zone] = price
+		}
+		totalOfferings += len(priceInfo.SpotPricePerHour)
+	}
+
+	p.spotPricingUpdated = true
+	if p.cm.HasChanged("spot-prices", p.spotPrices) {
+		log.FromContext(ctx).WithValues(
+			"instance-type-count", len(p.onDemandPrices),
+			"offering-count", totalOfferings).V(1).Info("updated spot pricing with instance types and offerings")
+	}
+
+	return nil
+}
+
+func (p *DefaultProvider) syncPricingData(ctx context.Context) error {
+	p.muPriceLastUpdatedTimestamp.Lock()
+	lastUpdatedTime := p.priceLastUpdatedTimestamp
+	p.muPriceLastUpdatedTimestamp.Unlock()
+
+	if lastUpdatedTime.Add(time.Minute * 5).Before(time.Now()) {
+		if err := p.alibabaCloudPriceClient.Sync(); err != nil {
+			log.FromContext(ctx).Error(err, "failed to sync pricing data from alibaba cloud")
+			return err
+		}
+		p.muPriceLastUpdatedTimestamp.Lock()
+		p.priceLastUpdatedTimestamp = time.Now()
+		p.muPriceLastUpdatedTimestamp.Unlock()
+	}
+
 	return nil
 }

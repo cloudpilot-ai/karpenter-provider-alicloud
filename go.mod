@@ -10,10 +10,11 @@ require (
 	github.com/alibabacloud-go/vpc-20160428/v6 v6.10.4
 	github.com/aliyun/aliyun-cli v0.0.0-20240925084117-158a70e275f0
 	github.com/awslabs/operatorpkg v0.0.0-20240805231134-67d0acfb6306
-	github.com/cloudpilot-ai/priceserver v0.0.0-20241009154424-d3cb0d822cab
+	github.com/cloudpilot-ai/priceserver v0.0.0-20241011010411-15ac0e19a857
 	github.com/mitchellh/hashstructure/v2 v2.0.2
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/samber/lo v1.47.0
+	github.com/stretchr/testify v1.9.0
 	go.uber.org/multierr v1.11.0
 	k8s.io/api v0.30.3
 	k8s.io/apimachinery v0.30.3
@@ -76,6 +77,7 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/client_golang v1.19.1 // indirect
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.53.0 // indirect
