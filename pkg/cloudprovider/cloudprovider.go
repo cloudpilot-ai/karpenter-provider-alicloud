@@ -41,6 +41,7 @@ import (
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/config"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/apis"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/apis/v1alpha1"
+	cloudproviderevents "github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/cloudprovider/events"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/instance"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/instancetype"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/utils"
@@ -127,18 +128,60 @@ func (c *CloudProvider) LivenessProbe(req *http.Request) error {
 
 // GetInstanceTypes returns all available InstanceTypes
 func (c *CloudProvider) GetInstanceTypes(ctx context.Context, nodePool *karpv1.NodePool) ([]*cloudprovider.InstanceType, error) {
-	// TODO: Implement this
-	return nil, nil
+	nodeClass, err := c.resolveNodeClassFromNodePool(ctx, nodePool)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			c.recorder.Publish(cloudproviderevents.NodePoolFailedToResolveNodeClass(nodePool))
+		}
+		// We must return an error here in the event of the node class not being found. Otherwise, users just get
+		// no instance types and a failure to schedule with no indicator pointing to a bad configuration
+		// as the cause.
+		log.FromContext(ctx).Error(err, "resolving node class")
+		return nil, err
+	}
+	// TODO: break this coupling
+	instanceTypes, err := c.instanceTypeProvider.List(ctx, nodeClass.Spec.KubeletConfiguration, nodeClass)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "listing instance types")
+		return nil, err
+	}
+	return instanceTypes, nil
 }
 
 func (c *CloudProvider) Delete(ctx context.Context, nodeClaim *karpv1.NodeClaim) error {
-	// TODO: Implement this
-	return nil
+	id, err := utils.ParseInstanceID(nodeClaim.Status.ProviderID)
+	if err != nil {
+		return fmt.Errorf("getting instance ID, %w", err)
+	}
+	ctx = log.IntoContext(ctx, log.FromContext(ctx).WithValues("id", id))
+	return c.instanceProvider.Delete(ctx, id)
 }
 
 func (c *CloudProvider) IsDrifted(ctx context.Context, nodeClaim *karpv1.NodeClaim) (cloudprovider.DriftReason, error) {
-	// TODO: Implement this
-	return cloudprovider.DriftReason(""), nil
+	// Not needed when GetInstanceTypes removes nodepool dependency
+	nodePoolName, ok := nodeClaim.Labels[karpv1.NodePoolLabelKey]
+	if !ok {
+		return "", nil
+	}
+	nodePool := &karpv1.NodePool{}
+	if err := c.kubeClient.Get(ctx, types.NamespacedName{Name: nodePoolName}, nodePool); err != nil {
+		return "", client.IgnoreNotFound(err)
+	}
+	if nodePool.Spec.Template.Spec.NodeClassRef == nil {
+		return "", nil
+	}
+	nodeClass, err := c.resolveNodeClassFromNodePool(ctx, nodePool)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			c.recorder.Publish(cloudproviderevents.NodePoolFailedToResolveNodeClass(nodePool))
+		}
+		return "", client.IgnoreNotFound(fmt.Errorf("resolving node class, %w", err))
+	}
+	driftReason, err := c.isNodeClassDrifted(ctx, nodeClaim, nodePool, nodeClass)
+	if err != nil {
+		return "", err
+	}
+	return driftReason, nil
 }
 
 // Name returns the CloudProvider implementation name.
@@ -147,8 +190,7 @@ func (c *CloudProvider) Name() string {
 }
 
 func (c *CloudProvider) GetSupportedNodeClasses() []status.Object {
-	// TODO: Implement this
-	return nil
+	return []status.Object{&v1alpha1.ECSNodeClass{}}
 }
 
 func (c *CloudProvider) resolveInstanceTypeFromInstance(ctx context.Context, instance *instance.Instance) (*cloudprovider.InstanceType, error) {
