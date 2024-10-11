@@ -1,0 +1,133 @@
+/*
+Copyright The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package disruption
+
+import (
+	"context"
+
+	"go.uber.org/multierr"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/clock"
+	controllerruntime "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	"sigs.k8s.io/karpenter/pkg/operator/injection"
+
+	v1 "sigs.k8s.io/karpenter/pkg/apis/v1"
+	"sigs.k8s.io/karpenter/pkg/cloudprovider"
+	nodeclaimutil "sigs.k8s.io/karpenter/pkg/utils/nodeclaim"
+	"sigs.k8s.io/karpenter/pkg/utils/result"
+)
+
+type nodeClaimReconciler interface {
+	Reconcile(context.Context, *v1.NodePool, *v1.NodeClaim) (reconcile.Result, error)
+}
+
+// Controller is a disruption controller that adds StatusConditions to nodeclaims when they meet certain disruption conditions
+// e.g. When the NodeClaim has become empty, then it is marked as "Empty" in the StatusConditions
+type Controller struct {
+	kubeClient    client.Client
+	cloudProvider cloudprovider.CloudProvider
+
+	drift         *Drift
+	consolidation *Consolidation
+}
+
+// NewController constructs a nodeclaim disruption controller. Note that every sub-controller has a dependency on its nodepool.
+// Disruption mechanisms that don't depend on the nodepool (like expiration), should live elsewhere.
+func NewController(clk clock.Clock, kubeClient client.Client, cloudProvider cloudprovider.CloudProvider) *Controller {
+	return &Controller{
+		kubeClient:    kubeClient,
+		cloudProvider: cloudProvider,
+		drift:         &Drift{cloudProvider: cloudProvider},
+		consolidation: &Consolidation{kubeClient: kubeClient, clock: clk},
+	}
+}
+
+// Reconcile executes a control loop for the resource
+func (c *Controller) Reconcile(ctx context.Context, nodeClaim *v1.NodeClaim) (reconcile.Result, error) {
+	ctx = injection.WithControllerName(ctx, "nodeclaim.disruption")
+
+	if !nodeClaim.DeletionTimestamp.IsZero() {
+		return reconcile.Result{}, nil
+	}
+
+	stored := nodeClaim.DeepCopy()
+	nodePoolName, ok := nodeClaim.Labels[v1.NodePoolLabelKey]
+	if !ok {
+		return reconcile.Result{}, nil
+	}
+	nodePool := &v1.NodePool{}
+	if err := c.kubeClient.Get(ctx, types.NamespacedName{Name: nodePoolName}, nodePool); err != nil {
+		return reconcile.Result{}, client.IgnoreNotFound(err)
+	}
+	var results []reconcile.Result
+	var errs error
+	reconcilers := []nodeClaimReconciler{
+		c.drift,
+		c.consolidation,
+	}
+	for _, reconciler := range reconcilers {
+		res, err := reconciler.Reconcile(ctx, nodePool, nodeClaim)
+		errs = multierr.Append(errs, err)
+		results = append(results, res)
+	}
+	if !equality.Semantic.DeepEqual(stored, nodeClaim) {
+		// We call Update() here rather than Patch() because patching a list with a JSON merge patch
+		// can cause races due to the fact that it fully replaces the list on a change
+		// Here, we are updating the status condition list
+		if err := c.kubeClient.Status().Update(ctx, nodeClaim); err != nil {
+			if errors.IsConflict(err) {
+				return reconcile.Result{Requeue: true}, nil
+			}
+			return reconcile.Result{}, client.IgnoreNotFound(err)
+		}
+	}
+	if errs != nil {
+		return reconcile.Result{}, errs
+	}
+	return result.Min(results...), nil
+}
+
+func (c *Controller) Register(_ context.Context, m manager.Manager) error {
+	builder := controllerruntime.NewControllerManagedBy(m)
+	for _, nodeClass := range c.cloudProvider.GetSupportedNodeClasses() {
+		builder = builder.Watches(
+			nodeClass,
+			nodeclaimutil.NodeClassEventHandler(c.kubeClient),
+		)
+	}
+	return builder.
+		Named("nodeclaim.disruption").
+		For(&v1.NodeClaim{}).
+		WithOptions(controller.Options{MaxConcurrentReconciles: 10}).
+		Watches(
+			&v1.NodePool{},
+			nodeclaimutil.NodePoolEventHandler(c.kubeClient),
+		).
+		Watches(
+			&corev1.Pod{},
+			nodeclaimutil.PodEventHandler(c.kubeClient),
+		).
+		Complete(reconcile.AsReconciler(m.GetClient(), c))
+}
