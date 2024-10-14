@@ -46,6 +46,73 @@ spec:
               ECSNodeClassSpec is the top level specification for the AliCloud Karpenter Provider.
               This will contain configuration necessary to launch instances in AliCloud.
             properties:
+              imageSelectorTerms:
+                description: ImageSelectorTerms is a list of or image selector terms.
+                  The terms are ORed.
+                items:
+                  description: |-
+                    ImageSelectorTerm defines selection logic for an image used by Karpenter to launch nodes.
+                    If multiple fields are used for selection, the requirements are ANDed.
+                  properties:
+                    alias:
+                      description: |-
+                        Alias specifies which ACK image to select.
+                        Each alias consists of a family and an image version, specified as "family@version".
+                        Valid families include: aliyun3.
+                        Currently only supports version pinning to the latest image release, with that images version format (ex: "aliyun3@latest").
+                        Setting the version to latest will result in drift when a new Image is released. This is **not** recommended for production environments.
+                      maxLength: 30
+                      type: string
+                      x-kubernetes-validations:
+                      - message: '''alias'' is improperly formatted, must match the
+                          format ''family@version'''
+                        rule: self.matches('^[a-zA-Z0-9]*@.*$')
+                      - message: 'family is not supported, must be one of the following:
+                          ''aliyun3'''
+                        rule: self.find('^[^@]+') in ['aliyun3']
+                    id:
+                      description: ID is the image id in ECS
+                      type: string
+                    name:
+                      description: |-
+                        Name is the image name in ECS.
+                        This value is the name field, which is different from the name tag.
+                      type: string
+                    owner:
+                      description: |-
+                        Owner is the image source.
+                        Default is system | self | public. If specified, only one of the following: "self", "system", "share", "public", and "marketplace"
+                      type: string
+                    tags:
+                      additionalProperties:
+                        type: string
+                      description: |-
+                        Tags is a map of key/value tags used to select subsets
+                        Specifying '*' for a value selects all values for a given tag key.
+                      maxProperties: 20
+                      type: object
+                      x-kubernetes-validations:
+                      - message: empty tag keys aren't supported
+                        rule: self.all(k, k != '')
+                  type: object
+                maxItems: 30
+                minItems: 1
+                type: array
+                x-kubernetes-validations:
+                - message: expected at least one, got none, ['tags', 'id', 'name',
+                    'alias']
+                  rule: self.all(x, has(x.tags) || has(x.id) || has(x.name) || has(x.alias))
+                - message: '''id'' is mutually exclusive, cannot be set with a combination
+                    of other fields in imageSelectorTerms'
+                  rule: '!self.exists(x, has(x.id) && (has(x.alias) || has(x.tags)
+                    || has(x.name) || has(x.owner)))'
+                - message: '''alias'' is mutually exclusive, cannot be set with a
+                    combination of other fields in imageSelectorTerms'
+                  rule: '!self.exists(x, has(x.alias) && (has(x.id) || has(x.tags)
+                    || has(x.name) || has(x.owner)))'
+                - message: '''alias'' is mutually exclusive, cannot be set with a
+                    combination of other imageSelectorTerms'
+                  rule: '!(self.exists(x, has(x.alias)) && self.size() != 1)'
               kubeletConfiguration:
                 description: |-
                   KubeletConfiguration defines args to be used when configuring kubelet on provisioned nodes.
@@ -245,12 +312,70 @@ spec:
                     of other fields in vSwitchSelectorTerms'
                   rule: '!self.all(x, has(x.id) && has(x.tags))'
             required:
+            - imageSelectorTerms
             - securityGroupSelectorTerms
             - vSwitchSelectorTerms
             type: object
           status:
             description: ECSNodeClassStatus contains the resolved state of the ECSNodeClass
             properties:
+              conditions:
+                description: Conditions contains signals for health and readiness
+                items:
+                  description: Condition aliases the upstream type and adds additional
+                    helper methods
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
               securityGroups:
                 description: |-
                   SecurityGroups contains the current Security Groups values that are available to the

@@ -56,10 +56,10 @@ func init() {
 }
 
 var (
-	TerminationFinalizer   = apis.Group + "/termination"
-	AWSToKubeArchitectures = map[string]string{
-		"x86_64":                 karpv1.ArchitectureAmd64,
-		karpv1.ArchitectureArm64: karpv1.ArchitectureArm64,
+	TerminationFinalizer            = apis.Group + "/termination"
+	AlibabaCloudToKubeArchitectures = map[string]string{
+		"x86_64": karpv1.ArchitectureAmd64,
+		"arm64":  karpv1.ArchitectureArm64,
 	}
 	WellKnownArchitectures = sets.NewString(
 		karpv1.ArchitectureAmd64,
@@ -79,11 +79,11 @@ var (
 	}
 	AMIFamilyBottlerocket                          = "Bottlerocket"
 	AMIFamilyAL2                                   = "AL2"
-	AMIFamilyAL2023                                = "AL2023"
+	ImageFamilyAliyun3                             = "Aliyun3"
 	AMIFamilyUbuntu                                = "Ubuntu"
 	AMIFamilyWindows2019                           = "Windows2019"
 	AMIFamilyWindows2022                           = "Windows2022"
-	AMIFamilyCustom                                = "Custom"
+	ImageFamilyCustom                              = "Custom"
 	Windows2019                                    = "2019"
 	Windows2022                                    = "2022"
 	WindowsCore                                    = "Core"
