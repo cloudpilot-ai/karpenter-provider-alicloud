@@ -100,7 +100,7 @@ func (c *Controller) tagInstance(ctx context.Context, nc *karpv1.NodeClaim, id s
 	tags := map[string]string{
 		v1alpha1.TagName:              nc.Status.NodeName,
 		v1alpha1.TagNodeClaim:         nc.Name,
-		v1alpha1.EKSClusterNameTagKey: options.FromContext(ctx).ClusterName,
+		v1alpha1.ECSClusterNameTagKey: options.FromContext(ctx).ClusterName,
 	}
 
 	// Remove tags which have been already populated

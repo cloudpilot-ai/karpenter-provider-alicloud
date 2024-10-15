@@ -77,12 +77,6 @@ func NewOperator(ctx context.Context, operator *operator.Operator) (context.Cont
 		os.Exit(1)
 	}
 
-	instanceProvider := instance.NewDefaultProvider(
-		ctx,
-		region,
-		ecsClient,
-	)
-
 	versionProvider := version.NewDefaultProvider(operator.KubernetesInterface, cache.New(alicache.KubernetesVersionTTL, alicache.DefaultCleanupInterval))
 	vSwitchProvider := vswitch.NewDefaultProvider(vpcClient, cache.New(alicache.DefaultTTL, alicache.DefaultCleanupInterval), cache.New(alicache.AvailableIPAddressTTL, alicache.DefaultCleanupInterval))
 	securityGroupProvider := securitygroup.NewDefaultProvider(region, ecsClient, cache.New(alicache.DefaultTTL, alicache.DefaultCleanupInterval))
@@ -100,6 +94,14 @@ func NewOperator(ctx context.Context, operator *operator.Operator) (context.Cont
 		operator.Elected(),
 		nil,
 		"",
+	)
+
+	instanceProvider := instance.NewDefaultProvider(
+		ctx,
+		region,
+		ecsClient,
+		vSwitchProvider,
+		launchTemplateProvider,
 	)
 
 	unavailableOfferingsCache := alicache.NewUnavailableOfferings()

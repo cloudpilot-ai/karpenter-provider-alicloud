@@ -73,7 +73,7 @@ var (
 		// https://docs.alicloud.amazon.com/eks/latest/APIReference/API_CreateCluster.html
 		regexp.MustCompile(`^kubernetes\.io/cluster/[0-9A-Za-z][A-Za-z0-9\-_]*$`),
 		regexp.MustCompile(fmt.Sprintf("^%s$", regexp.QuoteMeta(karpv1.NodePoolLabelKey))),
-		regexp.MustCompile(fmt.Sprintf("^%s$", regexp.QuoteMeta(EKSClusterNameTagKey))),
+		regexp.MustCompile(fmt.Sprintf("^%s$", regexp.QuoteMeta(ECSClusterNameTagKey))),
 		regexp.MustCompile(fmt.Sprintf("^%s$", regexp.QuoteMeta(LabelNodeClass))),
 		regexp.MustCompile(fmt.Sprintf("^%s$", regexp.QuoteMeta(TagNodeClaim))),
 	}
@@ -97,7 +97,7 @@ var (
 	ResourcePrivateIPv4Address corev1.ResourceName = "vpc.amazonalicloud.com/PrivateIPv4Address"
 	ResourceEFA                corev1.ResourceName = "vpc.amazonalicloud.com/efa"
 
-	EKSClusterNameTagKey = "eks:eks-cluster-name"
+	ECSClusterNameTagKey = "ecs:ecs-cluster-name"
 
 	LabelNodeClass = apis.Group + "/ecsnodeclass"
 

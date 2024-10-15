@@ -22,7 +22,6 @@ import (
 	ecsclient "github.com/alibabacloud-go/ecs-20140526/v4/client"
 	"github.com/samber/lo"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	karpv1 "sigs.k8s.io/karpenter/pkg/apis/v1"
 
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/utils"
 )
@@ -66,7 +65,7 @@ func NewInstance(out *ecsclient.DescribeInstancesResponseBodyInstancesInstance) 
 		Type:         *out.InstanceType,
 		Region:       *out.RegionId,
 		Zone:         *out.ZoneId,
-		CapacityType: lo.Ternary(out.SpotStrategy != nil && *out.SpotStrategy != "NoSpot", karpv1.CapacityTypeSpot, karpv1.CapacityTypeOnDemand),
+		CapacityType: utils.GetCapacityTypes(*out.SpotStrategy),
 		SecurityGroupIDs: lo.Map(out.SecurityGroupIds.SecurityGroupId, func(securitygroup *string, _ int) string {
 			return *securitygroup
 		}),

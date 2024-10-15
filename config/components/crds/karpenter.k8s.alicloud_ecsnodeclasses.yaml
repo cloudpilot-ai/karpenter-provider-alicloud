@@ -87,7 +87,7 @@ spec:
                       additionalProperties:
                         type: string
                       description: |-
-                        Tags is a map of key/value tags used to select subsets
+                        Tags is a map of key/value tags used to select vswitches
                         Specifying '*' for a value selects all values for a given tag key.
                       maxProperties: 20
                       type: object
@@ -116,7 +116,7 @@ spec:
               kubeletConfiguration:
                 description: |-
                   KubeletConfiguration defines args to be used when configuring kubelet on provisioned nodes.
-                  They are a subset of the upstream types, recognizing not all options may be supported.
+                  They are a vswitch of the upstream types, recognizing not all options may be supported.
                   Wherever possible, the types and names should reflect the upstream kubelet types.
                 properties:
                   clusterDNS:
@@ -339,6 +339,25 @@ spec:
                     - message: size invalid
                       rule: self >= 20
                 type: object
+              tags:
+                additionalProperties:
+                  type: string
+                description: Tags to be applied on ecs resources like instances and
+                  launch templates.
+                type: object
+                x-kubernetes-validations:
+                - message: empty tag keys aren't supported
+                  rule: self.all(k, k != '')
+                - message: tag contains a restricted tag matching ecs:ecs-cluster-name
+                  rule: self.all(k, k !='ecs:ecs-cluster-name')
+                - message: tag contains a restricted tag matching kubernetes.io/cluster/
+                  rule: self.all(k, !k.startsWith('kubernetes.io/cluster') )
+                - message: tag contains a restricted tag matching karpenter.sh/nodepool
+                  rule: self.all(k, k != 'karpenter.sh/nodepool')
+                - message: tag contains a restricted tag matching karpenter.sh/nodeclaim
+                  rule: self.all(k, k !='karpenter.sh/nodeclaim')
+                - message: tag contains a restricted tag matching karpenter.k8s.alibabacloud/ecsnodeclass
+                  rule: self.all(k, k !='karpenter.k8s.alibabacloud/ecsnodeclass')
               userData:
                 description: |-
                   UserData to be applied to the provisioned nodes.
