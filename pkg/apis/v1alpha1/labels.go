@@ -97,7 +97,7 @@ var (
 	ResourcePrivateIPv4Address corev1.ResourceName = "vpc.amazonalicloud.com/PrivateIPv4Address"
 	ResourceEFA                corev1.ResourceName = "vpc.amazonalicloud.com/efa"
 
-	EKSClusterNameTagKey = "eks:eks-cluster-name"
+	ECSClusterNameTagKey = "ecs:ecs-cluster-name"
 
 	LabelNodeClass = apis.Group + "/ecsnodeclass"
 
