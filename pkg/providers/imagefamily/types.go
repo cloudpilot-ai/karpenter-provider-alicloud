@@ -27,7 +27,10 @@ import (
 	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"sigs.k8s.io/karpenter/pkg/cloudprovider"
 	"sigs.k8s.io/karpenter/pkg/scheduling"
+
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/apis/v1alpha1"
 )
 
 const (
@@ -116,4 +119,6 @@ func (q *DescribeImageQuery) RequirementsForImageWithArchitecture(arch string) [
 // TODO: add OOSProvider
 type ImageFamily interface {
 	DescribeImageQuery(ctx context.Context, k8sVersion string, version string) ([]DescribeImageQuery, error)
+	UserData(kubeletConfig *v1alpha1.KubeletConfiguration, taints []corev1.Taint, labels map[string]string, instanceTypes []*cloudprovider.InstanceType, customUserData *string) string
+	DefaultSystemDisk() *v1alpha1.SystemDisk
 }

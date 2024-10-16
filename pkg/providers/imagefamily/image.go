@@ -90,7 +90,7 @@ func (p *DefaultProvider) DescribeImageQueries(ctx context.Context, nodeClass *v
 		if err != nil {
 			return nil, fmt.Errorf("getting kubernetes version, %w", err)
 		}
-		imageFamily := GetImageFamily(v1alpha1.ImageFamilyFromAlias(term.Alias))
+		imageFamily := GetImageFamily(v1alpha1.ImageFamilyFromAlias(term.Alias), nil)
 		query, err := imageFamily.DescribeImageQuery(ctx, kubernetesVersion, v1alpha1.ImageVersionFromAlias(term.Alias))
 		if err != nil {
 			return nil, err
@@ -203,16 +203,4 @@ func (p *DefaultProvider) describeImages(request *ecs.DescribeImagesRequest, pro
 		}
 	}
 	return nil
-}
-
-// TODO: move it to resolver.go
-func GetImageFamily(imageFamily string) ImageFamily {
-	switch imageFamily {
-	case v1alpha1.ImageFamilyCustom:
-		return &Custom{}
-	case v1alpha1.ImageFamilyAliyun3:
-		return &Aliyun3{}
-	default:
-		return &Aliyun3{}
-	}
 }
