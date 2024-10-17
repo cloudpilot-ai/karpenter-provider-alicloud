@@ -17,9 +17,11 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"fmt"
 	"log"
 	"strings"
 
+	"github.com/mitchellh/hashstructure/v2"
 	"github.com/samber/lo"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -204,6 +206,22 @@ type ECSNodeClass struct {
 
 	Spec   ECSNodeClassSpec   `json:"spec,omitempty"`
 	Status ECSNodeClassStatus `json:"status,omitempty"`
+}
+
+// We need to bump the ECSNodeClassHashVersion when we make an update to the ECSNodeClass CRD under these conditions:
+// 1. A field changes its default value for an existing field that is already hashed
+// 2. A field is added to the hash calculation with an already-set value
+// 3. A field is removed from the hash calculations
+const ECSNodeClassHashVersion = "v1"
+
+func (in *ECSNodeClass) Hash() string {
+	return fmt.Sprint(lo.Must(hashstructure.Hash([]interface{}{
+		in.Spec,
+	}, hashstructure.FormatV2, &hashstructure.HashOptions{
+		SlicesAsSets:    true,
+		IgnoreZeroValue: true,
+		ZeroNil:         true,
+	})))
 }
 
 // ImageFamily If an alias is specified, return alias, or be 'Custom' (enforced via validation).

@@ -28,6 +28,7 @@ import (
 
 	nodeclaimgarbagecollection "github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/controllers/nodeclaim/garbagecollection"
 	nodeclaimtagging "github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/controllers/nodeclaim/tagging"
+	nodeclasshash "github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/controllers/nodeclass/hash"
 	controllerspricing "github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/controllers/providers/pricing"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/instance"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/pricing"
@@ -37,6 +38,7 @@ func NewControllers(ctx context.Context, mgr manager.Manager, clk clock.Clock, k
 	cloudProvider cloudprovider.CloudProvider, instanceProvider instance.Provider, pricingProvider pricing.Provider) []controller.Controller {
 
 	controllers := []controller.Controller{
+		nodeclasshash.NewController(kubeClient),
 		controllerspricing.NewController(pricingProvider),
 		nodeclaimgarbagecollection.NewController(kubeClient, cloudProvider),
 		nodeclaimtagging.NewController(kubeClient, instanceProvider),
