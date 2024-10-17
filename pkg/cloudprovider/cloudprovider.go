@@ -18,6 +18,7 @@ package cloudprovider
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -36,6 +37,7 @@ import (
 	karpv1 "sigs.k8s.io/karpenter/pkg/apis/v1"
 	"sigs.k8s.io/karpenter/pkg/cloudprovider"
 	"sigs.k8s.io/karpenter/pkg/events"
+	"sigs.k8s.io/karpenter/pkg/scheduling"
 	"sigs.k8s.io/karpenter/pkg/utils/resources"
 
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/config"
@@ -65,8 +67,42 @@ func New(kubeClient client.Client, recorder events.Recorder) *CloudProvider {
 
 // Create a NodeClaim given the constraints.
 func (c *CloudProvider) Create(ctx context.Context, nodeClaim *karpv1.NodeClaim) (*karpv1.NodeClaim, error) {
-	// TODO: Implement this
-	return nil, nil
+	nodeClass, err := c.resolveNodeClassFromNodeClaim(ctx, nodeClaim)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			c.recorder.Publish(cloudproviderevents.NodeClaimFailedToResolveNodeClass(nodeClaim))
+		}
+		// We treat a failure to resolve the NodeClass as an ICE since this means there is no capacity possibilities for this NodeClaim
+		return nil, cloudprovider.NewInsufficientCapacityError(fmt.Errorf("resolving node class, %w", err))
+	}
+
+	nodeClassReady := nodeClass.StatusConditions().Get(status.ConditionReady)
+	if nodeClassReady.IsFalse() {
+		return nil, cloudprovider.NewNodeClassNotReadyError(stderrors.New(nodeClassReady.Message))
+	}
+	if nodeClassReady.IsUnknown() {
+		return nil, fmt.Errorf("resolving NodeClass readiness, NodeClass is in Ready=Unknown, %s", nodeClassReady.Message)
+	}
+	instanceTypes, err := c.resolveInstanceTypes(ctx, nodeClaim, nodeClass)
+	if err != nil {
+		return nil, fmt.Errorf("resolving instance types, %w", err)
+	}
+	if len(instanceTypes) == 0 {
+		return nil, cloudprovider.NewInsufficientCapacityError(fmt.Errorf("all requested instance types were unavailable during launch"))
+	}
+	instance, err := c.instanceProvider.Create(ctx, nodeClass, nodeClaim, instanceTypes)
+	if err != nil {
+		return nil, fmt.Errorf("creating instance, %w", err)
+	}
+	instanceType, _ := lo.Find(instanceTypes, func(i *cloudprovider.InstanceType) bool {
+		return i.Name == instance.Type
+	})
+	nc := c.instanceToNodeClaim(instance, instanceType, nodeClass)
+	nc.Annotations = lo.Assign(nc.Annotations, map[string]string{
+		v1alpha1.AnnotationECSNodeClassHash:        nodeClass.Hash(),
+		v1alpha1.AnnotationECSNodeClassHashVersion: v1alpha1.ECSNodeClassHashVersion,
+	})
+	return nc, nil
 }
 
 func (c *CloudProvider) List(ctx context.Context) ([]*karpv1.NodeClaim, error) {
@@ -281,4 +317,31 @@ func (c *CloudProvider) instanceToNodeClaim(i *instance.Instance, instanceType *
 	nodeClaim.Status.ProviderID = fmt.Sprintf("%s.%s", i.Region, i.ID)
 	nodeClaim.Status.ImageID = i.ImageID
 	return nodeClaim
+}
+
+func (c *CloudProvider) resolveNodeClassFromNodeClaim(ctx context.Context, nodeClaim *karpv1.NodeClaim) (*v1alpha1.ECSNodeClass, error) {
+	nodeClass := &v1alpha1.ECSNodeClass{}
+	if err := c.kubeClient.Get(ctx, types.NamespacedName{Name: nodeClaim.Spec.NodeClassRef.Name}, nodeClass); err != nil {
+		return nil, err
+	}
+	// For the purposes of NodeClass CloudProvider resolution, we treat deleting NodeClasses as NotFound
+	if !nodeClass.DeletionTimestamp.IsZero() {
+		// For the purposes of NodeClass CloudProvider resolution, we treat deleting NodeClasses as NotFound,
+		// but we return a different error message to be clearer to users
+		return nil, newTerminatingNodeClassError(nodeClass.Name)
+	}
+	return nodeClass, nil
+}
+
+func (c *CloudProvider) resolveInstanceTypes(ctx context.Context, nodeClaim *karpv1.NodeClaim, nodeClass *v1alpha1.ECSNodeClass) ([]*cloudprovider.InstanceType, error) {
+	instanceTypes, err := c.instanceTypeProvider.List(ctx, nodeClass.Spec.KubeletConfiguration, nodeClass)
+	if err != nil {
+		return nil, fmt.Errorf("getting instance types, %w", err)
+	}
+	reqs := scheduling.NewNodeSelectorRequirementsWithMinValues(nodeClaim.Spec.Requirements...)
+	return lo.Filter(instanceTypes, func(i *cloudprovider.InstanceType, _ int) bool {
+		return reqs.Compatible(i.Requirements, scheduling.AllowUndefinedWellKnownLabels) == nil &&
+			len(i.Offerings.Compatible(reqs).Available()) > 0 &&
+			resources.Fits(nodeClaim.Spec.Resources.Requests, i.Allocatable())
+	}), nil
 }
