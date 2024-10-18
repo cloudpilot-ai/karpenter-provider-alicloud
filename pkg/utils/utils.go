@@ -24,6 +24,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/samber/lo"
+	karpv1 "sigs.k8s.io/karpenter/pkg/apis/v1"
 	"sigs.k8s.io/karpenter/pkg/cloudprovider"
 )
 
@@ -95,4 +97,8 @@ func WithDefaultFloat64(key string, def float64) float64 {
 		return def
 	}
 	return f
+}
+
+func GetCapacityTypes(spotStrategy string) string {
+	return lo.Ternary(spotStrategy != "NoSpot", karpv1.CapacityTypeSpot, karpv1.CapacityTypeOnDemand)
 }
