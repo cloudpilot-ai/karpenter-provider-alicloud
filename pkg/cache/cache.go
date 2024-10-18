@@ -19,12 +19,25 @@ package cache
 import "time"
 
 const (
+	// DefaultTTL restricts to Ali APIs to this interval for verifying setup
+	// resources. This value represents the maximum eventual consistency between
+	// Ali actual state and the controller's ability to provision those
+	// resources. Cache hits enable faster provisioning and reduced API load on
+	// Ali APIs, which can have a serious impact on performance and scalability.
+	// DO NOT CHANGE THIS VALUE WITHOUT DUE CONSIDERATION
+	DefaultTTL = time.Minute
 	// KubernetesVersionTTL is the time before the detected Kubernetes version is removed from cache,
 	// to be re-detected next time it is needed.
 	KubernetesVersionTTL = 15 * time.Minute
 	// UnavailableOfferingsTTL is the time before offerings that were marked as unavailable
 	// are removed from the cache and are available for launch again
 	UnavailableOfferingsTTL = 3 * time.Minute
+	// AvailableIPAddressTTL is time to drop AvailableIPAddress data if it is not updated within the TTL
+	AvailableIPAddressTTL = 5 * time.Minute
+	// InstanceTypeAvailableDiskTTL is the time refresh InstanceType compatible disk
+	InstanceTypeAvailableDiskTTL = 30 * time.Minute
+	// LaunchTemplateTTL is time to drop LaunchTemplate data
+	LaunchTemplateTTL = 5 * time.Minute
 
 	// DefaultCleanupInterval triggers cache cleanup (lazy eviction) at this interval.
 	DefaultCleanupInterval = 1 * time.Minute

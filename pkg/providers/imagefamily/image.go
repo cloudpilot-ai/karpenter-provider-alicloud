@@ -43,13 +43,13 @@ type DefaultProvider struct {
 	sync.Mutex
 	cache           *cache.Cache
 	region          string
-	ecsapi          ecs.Client
+	ecsapi          *ecs.Client
 	cm              *pretty.ChangeMonitor
 	versionProvider version.Provider
 	// TODO: add OOSProvider
 }
 
-func NewDefaultProvider(region string, versionProvider version.Provider, ecsapi ecs.Client, cache *cache.Cache) *DefaultProvider {
+func NewDefaultProvider(region string, versionProvider version.Provider, ecsapi *ecs.Client, cache *cache.Cache) *DefaultProvider {
 	return &DefaultProvider{
 		cache:           cache,
 		region:          region,
