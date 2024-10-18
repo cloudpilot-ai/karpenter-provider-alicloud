@@ -16,12 +16,30 @@ limitations under the License.
 
 package imagefamily
 
-import "context"
+import (
+	"context"
+
+	corev1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/karpenter/pkg/cloudprovider"
+
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/apis/v1alpha1"
+)
 
 type Aliyun3 struct {
+	*Options
+}
+
+func (a Aliyun3) UserData(kubeletConfig *v1alpha1.KubeletConfiguration, taints []corev1.Taint, labels map[string]string, instanceTypes []*cloudprovider.InstanceType, customUserData *string) string {
+	//TODO implement me
+	panic("implement me")
 }
 
 func (a Aliyun3) DescribeImageQuery(ctx context.Context, k8sVersion string, imageVersion string) ([]DescribeImageQuery, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (a Aliyun3) DefaultSystemDisk() *v1alpha1.SystemDisk {
 	//TODO implement me
 	panic("implement me")
 }

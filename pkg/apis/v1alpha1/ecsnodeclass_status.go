@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	"github.com/awslabs/operatorpkg/status"
+	corev1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -46,6 +47,19 @@ type SecurityGroup struct {
 	Name string `json:"name,omitempty"`
 }
 
+// Image contains resolved image selector values utilized for node launch
+type Image struct {
+	// ID of the Image
+	// +required
+	ID string `json:"id"`
+	// Name of the Image
+	// +optional
+	Name string `json:"name,omitempty"`
+	// Requirements of the Image to be utilized on an instance type
+	// +required
+	Requirements []corev1.NodeSelectorRequirement `json:"requirements"`
+}
+
 // ECSNodeClassStatus contains the resolved state of the ECSNodeClass
 type ECSNodeClassStatus struct {
 	// VSwitches contains the current VSwitch values that are available to the
@@ -56,6 +70,10 @@ type ECSNodeClassStatus struct {
 	// cluster under the SecurityGroups selectors.
 	// +optional
 	SecurityGroups []SecurityGroup `json:"securityGroups,omitempty"`
+	// Image contains the current image that are available to the
+	// cluster under the Image selectors.
+	// +optional
+	Images []Image `json:"images,omitempty"`
 	// Conditions contains signals for health and readiness
 	// +optional
 	Conditions []status.Condition `json:"conditions,omitempty"`

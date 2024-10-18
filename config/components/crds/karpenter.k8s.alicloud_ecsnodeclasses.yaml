@@ -278,6 +278,73 @@ spec:
                 - message: '''name'' is mutually exclusive, cannot be set with a combination
                     of other fields in securityGroupSelectorTerms'
                   rule: '!self.all(x, has(x.name) && (has(x.tags) || has(x.id)))'
+              systemDisk:
+                description: SystemDisk to be applied to provisioned nodes.
+                properties:
+                  autoSnapshotPolicyId:
+                    description: The ID of the automatic snapshot policy to apply
+                      to the system disk.
+                    type: string
+                  burstingEnabled:
+                    description: Specifies whether to enable the performance burst
+                      feature for the system disk
+                    type: boolean
+                  category:
+                    description: |-
+                      The category of the system disk (for example, cloud or cloud_ssd).
+                      Only one of the following: "cloud", "cloud_efficiency", "cloud_ssd", "cloud_essd", "cloud_auto", and "cloud_essd_entry"
+                    enum:
+                    - cloud
+                    - cloud_efficiency
+                    - cloud_ssd
+                    - cloud_essd
+                    - cloud_auto
+                    - cloud_essd_entry
+                    type: string
+                  diskName:
+                    description: |-
+                      The name of the system disk.
+                      The name must be 2 to 128 characters in length.
+                      The name must start with a letter and cannot start with http:// or https://.
+                      The name can contain letters, digits, colons (:), underscores (_), and hyphens (-).
+                    pattern: ^[A-Za-z][A-Za-z0-9:_-]*$
+                    type: string
+                    x-kubernetes-validations:
+                    - message: format invalid
+                      rule: '!self.startsWith(''http'') && self.size() >= 2 && self.size()
+                        <= 128'
+                  performanceLevel:
+                    description: |-
+                      The performance level of the ESSD to use as the system disk. Default value: PL0.
+                      Valid values:
+                        * PL0: A single ESSD can deliver up to 10,000 random read/write IOPS.
+                        * PL1: A single ESSD can deliver up to 50,000 random read/write IOPS.
+                        * PL2: A single ESSD can deliver up to 100,000 random read/write IOPS.
+                        * PL3: A single ESSD can deliver up to 1,000,000 random read/write IOPS.
+                    enum:
+                    - PL0
+                    - PL1
+                    - PL2
+                    - PL3
+                    type: string
+                  size:
+                    description: |-
+                      The size of the system disk. Unit: GiB.
+                      Valid values:
+                        * If you set Category to cloud: 20 to 500.
+                        * If you set Category to other disk categories: 20 to 2048.
+                    format: int32
+                    type: integer
+                    x-kubernetes-validations:
+                    - message: size invalid
+                      rule: self >= 20
+                type: object
+              userData:
+                description: |-
+                  UserData to be applied to the provisioned nodes.
+                  It must be in the appropriate format based on the AMIFamily in use. Karpenter will merge certain fields into
+                  this UserData to ensure nodes are being provisioned with the correct configuration.
+                type: string
               vSwitchSelectorTerms:
                 description: VSwitchSelectorTerms is a list of or vSwitch selector
                   terms. The terms are ORed.
@@ -374,6 +441,57 @@ spec:
                   - reason
                   - status
                   - type
+                  type: object
+                type: array
+              images:
+                description: |-
+                  Image contains the current image that are available to the
+                  cluster under the Image selectors.
+                items:
+                  description: Image contains resolved image selector values utilized
+                    for node launch
+                  properties:
+                    id:
+                      description: ID of the Image
+                      type: string
+                    name:
+                      description: Name of the Image
+                      type: string
+                    requirements:
+                      description: Requirements of the Image to be utilized on an
+                        instance type
+                      items:
+                        description: |-
+                          A node selector requirement is a selector that contains values, a key, and an operator
+                          that relates the key and values.
+                        properties:
+                          key:
+                            description: The label key that the selector applies to.
+                            type: string
+                          operator:
+                            description: |-
+                              Represents a key's relationship to a set of values.
+                              Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                            type: string
+                          values:
+                            description: |-
+                              An array of string values. If the operator is In or NotIn,
+                              the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                              the values array must be empty. If the operator is Gt or Lt, the values
+                              array must have a single element, which will be interpreted as an integer.
+                              This array is replaced during a strategic merge patch.
+                            items:
+                              type: string
+                            type: array
+                            x-kubernetes-list-type: atomic
+                        required:
+                        - key
+                        - operator
+                        type: object
+                      type: array
+                  required:
+                  - id
+                  - requirements
                   type: object
                 type: array
               securityGroups:
