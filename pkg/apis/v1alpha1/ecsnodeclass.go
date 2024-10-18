@@ -53,6 +53,11 @@ type ECSNodeClassSpec struct {
 	// +kubebuilder:validation:MaxItems:=30
 	// +required
 	ImageSelectorTerms []ImageSelectorTerm `json:"imageSelectorTerms" hash:"ignore"`
+	// UserData to be applied to the provisioned nodes.
+	// It must be in the appropriate format based on the ImageFamily in use. Karpenter will merge certain fields into
+	// this UserData to ensure nodes are being provisioned with the correct configuration.
+	// +optional
+	UserData *string `json:"userData,omitempty"`
 	// KubeletConfiguration defines args to be used when configuring kubelet on provisioned nodes.
 	// They are a subset of the upstream types, recognizing not all options may be supported.
 	// Wherever possible, the types and names should reflect the upstream kubelet types.
@@ -61,6 +66,9 @@ type ECSNodeClassSpec struct {
 	// +kubebuilder:validation:XValidation:message="evictionSoftGracePeriod OwnerKey does not have a matching evictionSoft",rule="has(self.evictionSoftGracePeriod) ? self.evictionSoftGracePeriod.all(e, (e in self.evictionSoft)):true"
 	// +optional
 	KubeletConfiguration *KubeletConfiguration `json:"kubeletConfiguration,omitempty"`
+	// SystemDisk to be applied to provisioned nodes.
+	// +optional
+	SystemDisk *SystemDisk `json:"systemDisk,omitempty"`
 }
 
 // VSwitchSelectorTerm defines selection logic for a vSwitch used by Karpenter to launch nodes.
@@ -194,6 +202,43 @@ type KubeletConfiguration struct {
 	// CPUCFSQuota enables CPU CFS quota enforcement for containers that specify CPU limits.
 	// +optional
 	CPUCFSQuota *bool `json:"cpuCFSQuota,omitempty"`
+}
+
+type SystemDisk struct {
+	// The category of the system disk (for example, cloud or cloud_ssd).
+	// Only one of the following: "cloud", "cloud_efficiency", "cloud_ssd", "cloud_essd", "cloud_auto", and "cloud_essd_entry"
+	// +kubebuilder:validation:Enum:={cloud,cloud_efficiency,cloud_ssd,cloud_essd,cloud_auto,cloud_essd_entry}
+	// +optional
+	Category *string `json:"category,omitempty"`
+	// The size of the system disk. Unit: GiB.
+	// Valid values:
+	//   * If you set Category to cloud: 20 to 500.
+	//   * If you set Category to other disk categories: 20 to 2048.
+	//
+	// +kubebuilder:validation:XValidation:message="size invalid",rule="self >= 20"
+	// +optional
+	Size *int32 `json:"size,omitempty"`
+	// The name of the system disk.
+	// The name must be 2 to 128 characters in length.
+	// The name must start with a letter and cannot start with http:// or https://.
+	// The name can contain letters, digits, colons (:), underscores (_), and hyphens (-).
+	// +kubebuilder:validation:XValidation:message="format invalid",rule="!self.startsWith('http') && self.size() >= 2 && self.size() <= 128"
+	// +kubebuilder:validation:Pattern="^[A-Za-z][A-Za-z0-9:_-]*$"
+	// +optional
+	DiskName *string `json:"diskName,omitempty"`
+	// The performance level of the ESSD to use as the system disk. Default value: PL0.
+	// Valid values:
+	//   * PL0: A single ESSD can deliver up to 10,000 random read/write IOPS.
+	//   * PL1: A single ESSD can deliver up to 50,000 random read/write IOPS.
+	//   * PL2: A single ESSD can deliver up to 100,000 random read/write IOPS.
+	//   * PL3: A single ESSD can deliver up to 1,000,000 random read/write IOPS.
+	// +kubebuilder:validation:Enum:={PL0,PL1,PL2,PL3}
+	PerformanceLevel *string `json:"performanceLevel,omitempty"`
+	// The ID of the automatic snapshot policy to apply to the system disk.
+	AutoSnapshotPolicyID *string `json:"autoSnapshotPolicyId,omitempty"`
+	// Specifies whether to enable the performance burst feature for the system disk
+	BurstingEnabled *bool `json:"burstingEnabled,omitempty"`
+	// TODO: add ProvisionedIops or Iops
 }
 
 // ECSNodeClass is the Schema for the ECSNodeClass API

@@ -18,7 +18,9 @@ package imagefamily
 
 import (
 	"context"
+	"encoding/base64"
 
+	"github.com/alibabacloud-go/tea/tea"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/karpenter/pkg/cloudprovider"
 
@@ -26,14 +28,18 @@ import (
 )
 
 type Custom struct {
+	*Options
 }
 
 // UserData returns the default userdata script for the Image Family
-func (c Custom) UserData(_ *v1alpha1.KubeletConfiguration, _ []corev1.Taint, _ map[string]string, _ *string, _ []*cloudprovider.InstanceType, customUserData *string) {
-	//TODO implement me
-	panic("implement me")
+func (c Custom) UserData(kubeletConfig *v1alpha1.KubeletConfiguration, taints []corev1.Taint, labels map[string]string, instanceTypes []*cloudprovider.InstanceType, customUserData *string) string {
+	return base64.StdEncoding.EncodeToString([]byte(tea.StringValue(customUserData)))
 }
 
 func (c Custom) DescribeImageQuery(_ context.Context, _ string, _ string) ([]DescribeImageQuery, error) {
 	return []DescribeImageQuery{}, nil
+}
+
+func (c Custom) DefaultSystemDisk() *v1alpha1.SystemDisk {
+	return nil
 }

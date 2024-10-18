@@ -20,22 +20,27 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
 	ecs "github.com/alibabacloud-go/ecs-20140526/v4/client"
 	util "github.com/alibabacloud-go/tea-utils/v2/service"
 	"github.com/alibabacloud-go/tea/tea"
+	"github.com/mitchellh/hashstructure/v2"
 	"github.com/patrickmn/go-cache"
 	"github.com/samber/lo"
 	"go.uber.org/multierr"
+	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	karpv1 "sigs.k8s.io/karpenter/pkg/apis/v1"
 	"sigs.k8s.io/karpenter/pkg/cloudprovider"
 	"sigs.k8s.io/karpenter/pkg/utils/pretty"
 
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/apis"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/apis/v1alpha1"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/operator/options"
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/imagefamily"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/securitygroup"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/vswitch"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/utils"
@@ -50,6 +55,7 @@ type Provider interface {
 
 type LaunchTemplate struct {
 	Name          string
+	ID            string
 	InstanceTypes []*cloudprovider.InstanceType
 	ImageID       string
 }
@@ -60,17 +66,26 @@ type DefaultProvider struct {
 	ecsapi ecs.Client
 	cache  *cache.Cache
 	cm     *pretty.ChangeMonitor
+
+	ClusterEndpoint       string
+	imageFamily           imagefamily.Resolver
+	securityGroupProvider securitygroup.Provider
+	vSwitchProvider       vswitch.Provider
 }
 
-// TODO: add imagefamily args later
-func NewDefaultProvider(ctx context.Context, cache *cache.Cache, region string, ecsapi ecs.Client,
-	securityGroupProvider securitygroup.Provider, subnetProvider vswitch.Provider,
+func NewDefaultProvider(ctx context.Context, cache *cache.Cache, region string, ecsapi ecs.Client, imageFamily imagefamily.Resolver,
+	securityGroupProvider securitygroup.Provider, vSwitchProvider vswitch.Provider,
 	caBundle *string, startAsync <-chan struct{}, kubeDNSIP net.IP, clusterEndpoint string) *DefaultProvider {
 	l := &DefaultProvider{
 		region: region,
 		ecsapi: ecsapi,
 		cache:  cache,
 		cm:     pretty.NewChangeMonitor(),
+
+		ClusterEndpoint:       clusterEndpoint,
+		imageFamily:           imageFamily,
+		securityGroupProvider: securityGroupProvider,
+		vSwitchProvider:       vSwitchProvider,
 	}
 	l.cache.OnEvicted(l.cachedEvictedFunc(ctx))
 	go func() {
@@ -86,8 +101,27 @@ func NewDefaultProvider(ctx context.Context, cache *cache.Cache, region string, 
 }
 
 func (p *DefaultProvider) EnsureAll(ctx context.Context, nodeClass *v1alpha1.ECSNodeClass, nodeClaim *karpv1.NodeClaim, instanceTypes []*cloudprovider.InstanceType, capacityType string, tags map[string]string) ([]*LaunchTemplate, error) {
-	//TODO implement me
-	panic("implement me")
+	p.Lock()
+	defer p.Unlock()
+
+	options, err := p.resolveImageOptions(ctx, nodeClass, lo.Assign(nodeClaim.Labels, map[string]string{karpv1.CapacityTypeLabelKey: capacityType}), tags)
+	if err != nil {
+		return nil, err
+	}
+	resolvedLaunchTemplates, err := p.imageFamily.Resolve(ctx, nodeClass, nodeClaim, instanceTypes, capacityType, options)
+	if err != nil {
+		return nil, err
+	}
+	var launchTemplates []*LaunchTemplate
+	for _, resolvedLaunchTemplate := range resolvedLaunchTemplates {
+		// Ensure the launch template exists, or create it
+		id, err := p.ensureLaunchTemplate(ctx, resolvedLaunchTemplate)
+		if err != nil {
+			return nil, err
+		}
+		launchTemplates = append(launchTemplates, &LaunchTemplate{Name: LaunchTemplateName(resolvedLaunchTemplate), ID: id, InstanceTypes: resolvedLaunchTemplate.InstanceTypes, ImageID: resolvedLaunchTemplate.ImageID})
+	}
+	return launchTemplates, nil
 }
 
 func (p *DefaultProvider) DeleteAll(ctx context.Context, nodeClass *v1alpha1.ECSNodeClass) error {
@@ -133,6 +167,108 @@ func (p *DefaultProvider) InvalidateCache(ctx context.Context, ltName string, lt
 	p.cache.Delete(ltName)
 }
 
+func (p *DefaultProvider) resolveImageOptions(ctx context.Context, nodeClass *v1alpha1.ECSNodeClass, labels, tags map[string]string) (*imagefamily.Options, error) {
+	// Remove any labels passed into userData that are prefixed with "node-restriction.kubernetes.io" or "kops.k8s.io" since the kubelet can't
+	// register the node with any labels from this domain: https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#noderestriction
+	for k := range labels {
+		labelDomain := karpv1.GetLabelDomain(k)
+		if strings.HasSuffix(labelDomain, corev1.LabelNamespaceNodeRestriction) || strings.HasSuffix(labelDomain, "kops.k8s.io") {
+			delete(labels, k)
+		}
+	}
+	// Relying on the status rather than an API call means that Karpenter is subject to a race
+	// condition where ECSNodeClass spec changes haven't propagated to the status once a node
+	// has launched.
+	// If a user changes their ECSNodeClass and shortly after Karpenter launches a node,
+	// in the worst case, the node could be drifted and re-created.
+	// TODO @aengeda: add status generation fields to gate node creation until the status is updated from a spec change
+	// Get constrained security groups
+	if len(nodeClass.Status.SecurityGroups) == 0 {
+		return nil, fmt.Errorf("no security groups are present in the status")
+	}
+	return &imagefamily.Options{
+		ClusterName:     options.FromContext(ctx).ClusterName,
+		ClusterEndpoint: p.ClusterEndpoint,
+		SecurityGroups:  nodeClass.Status.SecurityGroups,
+		Tags:            tags,
+		Labels:          labels,
+		NodeClassName:   nodeClass.Name,
+	}, nil
+}
+
+func (p *DefaultProvider) ensureLaunchTemplate(ctx context.Context, options *imagefamily.LaunchTemplate) (string, error) {
+	name := LaunchTemplateName(options)
+	ctx = log.IntoContext(ctx, log.FromContext(ctx).WithValues("launch-template-name", name))
+	// Read from cache
+	if launchTemplateID, ok := p.cache.Get(name); ok {
+		p.cache.SetDefault(name, launchTemplateID)
+		return launchTemplateID.(string), nil
+	}
+	// Attempt to find an existing LT.
+	runtime := &util.RuntimeOptions{}
+	output, err := p.ecsapi.DescribeLaunchTemplatesWithOptions(&ecs.DescribeLaunchTemplatesRequest{
+		RegionId:           tea.String(p.region),
+		LaunchTemplateName: []*string{tea.String(name)},
+	}, runtime)
+
+	if err != nil {
+		return "", fmt.Errorf("describing launch templates, %w", err)
+	} else if output == nil || output.Body == nil || output.Body.LaunchTemplateSets == nil {
+		return "", fmt.Errorf("unexpected null value was returned")
+	}
+
+	// Create LT if one doesn't exist
+	var launchTemplateID string
+	if len(output.Body.LaunchTemplateSets.LaunchTemplateSet) == 0 {
+		launchTemplateID, err = p.createLaunchTemplate(ctx, options)
+		if err != nil {
+			return "", fmt.Errorf("creating launch template, %w", err)
+		}
+	} else if len(output.Body.LaunchTemplateSets.LaunchTemplateSet) != 1 {
+		return "", fmt.Errorf("expected to find one launch template, but found %d", len(output.Body.LaunchTemplateSets.LaunchTemplateSet))
+	} else {
+		if p.cm.HasChanged("launchtemplate-"+name, name) {
+			log.FromContext(ctx).V(1).Info("discovered launch template")
+		}
+		launchTemplateID = *output.Body.LaunchTemplateSets.LaunchTemplateSet[0].LaunchTemplateId
+	}
+	p.cache.SetDefault(name, launchTemplateID)
+	return launchTemplateID, nil
+}
+
+func (p *DefaultProvider) createLaunchTemplate(ctx context.Context, options *imagefamily.LaunchTemplate) (string, error) {
+	runtime := &util.RuntimeOptions{}
+	output, err := p.ecsapi.CreateLaunchTemplateWithOptions(&ecs.CreateLaunchTemplateRequest{
+		RegionId:           tea.String(p.region),
+		LaunchTemplateName: tea.String(LaunchTemplateName(options)),
+		ImageId:            tea.String(options.ImageID),
+		SecurityGroupIds:   lo.Map(options.SecurityGroups, func(s v1alpha1.SecurityGroup, _ int) *string { return tea.String(s.ID) }),
+		UserData:           tea.String(options.UserData),
+		SystemDisk: lo.Ternary(options.SystemDisk == nil, nil, &ecs.CreateLaunchTemplateRequestSystemDisk{
+			Category:             options.SystemDisk.Category,
+			Size:                 options.SystemDisk.Size,
+			DiskName:             options.SystemDisk.DiskName,
+			PerformanceLevel:     options.SystemDisk.PerformanceLevel,
+			AutoSnapshotPolicyId: options.SystemDisk.AutoSnapshotPolicyID,
+			BurstingEnabled:      options.SystemDisk.BurstingEnabled,
+		}),
+		// TODO: more params needed, HttpTokens, RamRole, NetworkInterface, ImageOwnerAlias ...
+		Tag: lo.MapToSlice(options.Tags, func(k, v string) *ecs.CreateLaunchTemplateRequestTag {
+			return &ecs.CreateLaunchTemplateRequestTag{Key: tea.String(k), Value: tea.String(v)}
+		}),
+		TemplateTag: lo.MapToSlice(lo.Assign(options.Tags, map[string]string{v1alpha1.TagManagedLaunchTemplate: options.ClusterName, v1alpha1.LabelNodeClass: options.NodeClassName}), func(k, v string) *ecs.CreateLaunchTemplateRequestTemplateTag {
+			return &ecs.CreateLaunchTemplateRequestTemplateTag{Key: tea.String(k), Value: tea.String(v)}
+		}),
+	}, runtime)
+	if err != nil {
+		return "", err
+	} else if output == nil || output.Body == nil || output.Body.LaunchTemplateId == nil {
+		return "", fmt.Errorf("unexpected null output")
+	}
+	log.FromContext(ctx).WithValues("id", tea.StringValue(output.Body.LaunchTemplateId)).V(1).Info("created launch template")
+	return *output.Body.LaunchTemplateId, nil
+}
+
 // hydrateCache queries for existing Launch Templates created by Karpenter for the current cluster and adds to the LT cache.
 // Any error during hydration will result in a panic
 func (p *DefaultProvider) hydrateCache(ctx context.Context) {
@@ -143,7 +279,7 @@ func (p *DefaultProvider) hydrateCache(ctx context.Context) {
 		Value: tea.String(clusterName),
 	}}
 	if err := p.describeLaunchTemplates(&ecs.DescribeLaunchTemplatesRequest{RegionId: tea.String(p.region), TemplateTag: tags}, func(lt *ecs.DescribeLaunchTemplatesResponseBodyLaunchTemplateSetsLaunchTemplateSet) {
-		p.cache.SetDefault(*lt.LaunchTemplateName, lt)
+		p.cache.SetDefault(*lt.LaunchTemplateName, *lt.LaunchTemplateId)
 	}); err != nil {
 		log.FromContext(ctx).Error(err, "unable to hydrate the AWS launch template cache")
 	}
@@ -157,13 +293,13 @@ func (p *DefaultProvider) cachedEvictedFunc(ctx context.Context) func(string, in
 		if _, expiration, _ := p.cache.GetWithExpiration(key); expiration.After(time.Now()) {
 			return
 		}
-		launchTemplate := lt.(*ecs.DescribeLaunchTemplatesResponseBodyLaunchTemplateSetsLaunchTemplateSet)
+		launchTemplateID := lt.(string)
 		// no guarantee of deletion
-		if _, err := p.ecsapi.DeleteLaunchTemplateWithOptions(&ecs.DeleteLaunchTemplateRequest{RegionId: tea.String(p.region), LaunchTemplateId: launchTemplate.LaunchTemplateId, LaunchTemplateName: launchTemplate.LaunchTemplateName}, &util.RuntimeOptions{}); err != nil {
-			log.FromContext(ctx).WithValues("launch-template", launchTemplate).Error(err, "failed to delete launch template") // If the LaunchTemplate does not exist, no error is returned.
+		if _, err := p.ecsapi.DeleteLaunchTemplateWithOptions(&ecs.DeleteLaunchTemplateRequest{RegionId: tea.String(p.region), LaunchTemplateId: tea.String(launchTemplateID), LaunchTemplateName: tea.String(key)}, &util.RuntimeOptions{}); err != nil {
+			log.FromContext(ctx).WithValues("launch-template", launchTemplateID).Error(err, "failed to delete launch template") // If the LaunchTemplate does not exist, no error is returned.
 			return
 		}
-		log.FromContext(ctx).WithValues("id", *launchTemplate.LaunchTemplateId, "name", *launchTemplate.LaunchTemplateName).V(1).Info("deleted launch template")
+		log.FromContext(ctx).WithValues("id", launchTemplateID, "name", key).V(1).Info("deleted launch template")
 	}
 }
 
@@ -188,4 +324,8 @@ func (p *DefaultProvider) describeLaunchTemplates(request *ecs.DescribeLaunchTem
 		}
 	}
 	return nil
+}
+
+func LaunchTemplateName(options *imagefamily.LaunchTemplate) string {
+	return fmt.Sprintf("%s/%d", apis.Group, lo.Must(hashstructure.Hash(options, hashstructure.FormatV2, &hashstructure.HashOptions{SlicesAsSets: true})))
 }
