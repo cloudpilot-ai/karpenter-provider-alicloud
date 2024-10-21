@@ -84,12 +84,12 @@ type Resolver interface {
 type DefaultResolver struct {
 	sync.Mutex
 	region string
-	ecsapi ecs.Client
+	ecsapi *ecs.Client
 	cache  *cache.Cache
 }
 
 // NewDefaultResolver constructs a new launch template DefaultResolver
-func NewDefaultResolver(region string, ecsapi ecs.Client, cache *cache.Cache) *DefaultResolver {
+func NewDefaultResolver(region string, ecsapi *ecs.Client, cache *cache.Cache) *DefaultResolver {
 	return &DefaultResolver{
 		region: region,
 		ecsapi: ecsapi,

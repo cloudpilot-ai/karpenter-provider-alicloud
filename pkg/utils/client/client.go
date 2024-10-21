@@ -20,12 +20,11 @@ import (
 	"errors"
 
 	openapi "github.com/alibabacloud-go/darabonba-openapi/v2/client"
-	ecsclient "github.com/alibabacloud-go/ecs-20140526/v4/client"
 	"github.com/alibabacloud-go/tea/tea"
 	aliyunconfig "github.com/aliyun/aliyun-cli/config"
 )
 
-func NewECSClient() (*ecsclient.Client, error) {
+func NewClientConfig() (*openapi.Config, error) {
 	profile, err := aliyunconfig.LoadCurrentProfile()
 	if err != nil {
 		return nil, err
@@ -40,10 +39,8 @@ func NewECSClient() (*ecsclient.Client, error) {
 		return nil, err
 	}
 
-	ecsConfig := &openapi.Config{
+	return &openapi.Config{
 		RegionId:   tea.String(profile.RegionId),
 		Credential: credentialClient,
-	}
-
-	return ecsclient.NewClient(ecsConfig)
+	}, nil
 }

@@ -40,14 +40,14 @@ type Provider interface {
 type DefaultProvider struct {
 	sync.Mutex
 	region string
-	ecsapi ecs.Client
+	ecsapi *ecs.Client
 	cache  *cache.Cache
 	cm     *pretty.ChangeMonitor
 	// TODO: Alibaba Cloud security groups have a limit on the number of IP addresses, may need to prevent miss
 	// And the available IPs returned by the API are not real-time. It is likely that an IP cache like VSwitchProvider will be needed later.
 }
 
-func NewDefaultProvider(region string, ecsapi ecs.Client, cache *cache.Cache) *DefaultProvider {
+func NewDefaultProvider(region string, ecsapi *ecs.Client, cache *cache.Cache) *DefaultProvider {
 	return &DefaultProvider{
 		region: region,
 		ecsapi: ecsapi,

@@ -63,7 +63,7 @@ type LaunchTemplate struct {
 type DefaultProvider struct {
 	sync.Mutex
 	region string
-	ecsapi ecs.Client
+	ecsapi *ecs.Client
 	cache  *cache.Cache
 	cm     *pretty.ChangeMonitor
 
@@ -73,7 +73,7 @@ type DefaultProvider struct {
 	vSwitchProvider       vswitch.Provider
 }
 
-func NewDefaultProvider(ctx context.Context, cache *cache.Cache, region string, ecsapi ecs.Client, imageFamily imagefamily.Resolver,
+func NewDefaultProvider(ctx context.Context, cache *cache.Cache, region string, ecsapi *ecs.Client, imageFamily imagefamily.Resolver,
 	securityGroupProvider securitygroup.Provider, vSwitchProvider vswitch.Provider,
 	caBundle *string, startAsync <-chan struct{}, kubeDNSIP net.IP, clusterEndpoint string) *DefaultProvider {
 	l := &DefaultProvider{
@@ -104,11 +104,11 @@ func (p *DefaultProvider) EnsureAll(ctx context.Context, nodeClass *v1alpha1.ECS
 	p.Lock()
 	defer p.Unlock()
 
-	options, err := p.resolveImageOptions(ctx, nodeClass, lo.Assign(nodeClaim.Labels, map[string]string{karpv1.CapacityTypeLabelKey: capacityType}), tags)
+	imageOptions, err := p.resolveImageOptions(ctx, nodeClass, lo.Assign(nodeClaim.Labels, map[string]string{karpv1.CapacityTypeLabelKey: capacityType}), tags)
 	if err != nil {
 		return nil, err
 	}
-	resolvedLaunchTemplates, err := p.imageFamily.Resolve(ctx, nodeClass, nodeClaim, instanceTypes, capacityType, options)
+	resolvedLaunchTemplates, err := p.imageFamily.Resolve(ctx, nodeClass, nodeClaim, instanceTypes, capacityType, imageOptions)
 	if err != nil {
 		return nil, err
 	}
