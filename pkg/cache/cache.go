@@ -45,4 +45,7 @@ const (
 	// We drop the cleanup interval down for the ICE cache to get quicker reactivity to offerings
 	// that become available after they get evicted from the cache
 	UnavailableOfferingsCleanupInterval = time.Second * 10
+
+	// InstanceTypesAndZonesTTL is the time before we refresh instance types and zones at ECS
+	InstanceTypesAndZonesTTL = 5 * time.Minute
 )

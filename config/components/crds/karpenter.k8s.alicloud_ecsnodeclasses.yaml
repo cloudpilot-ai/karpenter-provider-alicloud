@@ -43,7 +43,7 @@ spec:
             type: object
           spec:
             description: |-
-              ECSNodeClassSpec is the top level specification for the AliCloud Karpenter Provider.
+              ECSNodeClassSpec is the top level specification for the AlibabaCloud Karpenter Provider.
               This will contain configuration necessary to launch instances in AliCloud.
             properties:
               imageSelectorTerms:
@@ -342,7 +342,7 @@ spec:
               userData:
                 description: |-
                   UserData to be applied to the provisioned nodes.
-                  It must be in the appropriate format based on the AMIFamily in use. Karpenter will merge certain fields into
+                  It must be in the appropriate format based on the ImageFamily in use. Karpenter will merge certain fields into
                   this UserData to ensure nodes are being provisioned with the correct configuration.
                 type: string
               vSwitchSelectorTerms:

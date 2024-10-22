@@ -33,6 +33,8 @@ func main() {
 	aliCloudProvider := cloudprovider.New(
 		op.GetClient(),
 		op.EventRecorder,
+		op.InstanceTypeProvider,
+		op.InstanceProvider,
 	)
 
 	lo.Must0(op.AddHealthzCheck("cloud-provider", aliCloudProvider.LivenessProbe))
@@ -40,6 +42,7 @@ func main() {
 
 	op.
 		WithControllers(ctx, corecontrollers.NewControllers(
+			ctx,
 			op.Manager,
 			op.Clock,
 			op.GetClient(),
@@ -54,6 +57,7 @@ func main() {
 			op.EventRecorder,
 			cloudProvider,
 			op.InstanceProvider,
+			op.InstanceTypeProvider,
 			op.PricingProvider,
 		)...).
 		Start(ctx, cloudProvider)

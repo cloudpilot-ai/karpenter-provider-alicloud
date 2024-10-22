@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	ecsclient "github.com/alibabacloud-go/ecs-20140526/v4/client"
+	"github.com/alibabacloud-go/tea/tea"
 	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -44,6 +45,8 @@ var (
 const (
 	MemoryAvailable = "memory.available"
 	NodeFSAvailable = "nodefs.available"
+
+	GiBBytesRatio = 1024 * 1024 * 1024
 )
 
 func NewInstanceType(ctx context.Context, info *ecsclient.DescribeInstanceTypesResponseBodyInstanceTypesInstanceType, kc *v1alpha1.KubeletConfiguration, region string, offerings cloudprovider.Offerings) *cloudprovider.InstanceType {
@@ -65,12 +68,23 @@ func NewInstanceType(ctx context.Context, info *ecsclient.DescribeInstanceTypesR
 	return it
 }
 
+func extractECSArch(unFormatedArch string) string {
+	switch unFormatedArch {
+	case "X86":
+		return "amd64"
+	case "ARM":
+		return "arm64"
+	default:
+		return "amd64"
+	}
+}
+
 //nolint:gocyclo
 func computeRequirements(info *ecsclient.DescribeInstanceTypesResponseBodyInstanceTypesInstanceType, offerings cloudprovider.Offerings, region string) scheduling.Requirements {
 	requirements := scheduling.NewRequirements(
 		// Well Known Upstream
 		scheduling.NewRequirement(corev1.LabelInstanceTypeStable, corev1.NodeSelectorOpIn, *info.InstanceTypeId),
-		scheduling.NewRequirement(corev1.LabelArchStable, corev1.NodeSelectorOpIn, *info.CpuArchitecture),
+		scheduling.NewRequirement(corev1.LabelArchStable, corev1.NodeSelectorOpIn, extractECSArch(*info.CpuArchitecture)),
 		scheduling.NewRequirement(corev1.LabelOSStable, corev1.NodeSelectorOpIn, string(corev1.Linux)),
 		scheduling.NewRequirement(corev1.LabelTopologyZone, corev1.NodeSelectorOpIn, lo.Map(offerings.Available(), func(o cloudprovider.Offering, _ int) string {
 			return o.Requirements.Get(corev1.LabelTopologyZone).Any()
@@ -256,10 +270,13 @@ func cpu(info *ecsclient.DescribeInstanceTypesResponseBodyInstanceTypesInstanceT
 }
 
 func memory(ctx context.Context, info *ecsclient.DescribeInstanceTypesResponseBodyInstanceTypesInstanceType) *resource.Quantity {
-	sizeInGib := *info.MemorySize
+	sizeInGib := tea.Float32Value(info.MemorySize)
 	mem := resources.Quantity(fmt.Sprintf("%fGi", sizeInGib))
+	if mem.IsZero() {
+		return mem
+	}
 	// Account for VM overhead in calculation
-	mem.Sub(resource.MustParse(fmt.Sprintf("%dGi", int64(math.Ceil(float64(mem.Value())*options.FromContext(ctx).VMMemoryOverheadPercent/1024/1024)))))
+	mem.Sub(resource.MustParse(fmt.Sprintf("%dGi", int64(math.Ceil(float64(mem.Value())*options.FromContext(ctx).VMMemoryOverheadPercent/GiBBytesRatio)))))
 	return mem
 }
 
@@ -307,7 +324,7 @@ func getCPUManufacturer(cpuName string) string {
 }
 
 func ephemeralStorage(info *ecsclient.DescribeInstanceTypesResponseBodyInstanceTypesInstanceType) *resource.Quantity {
-	return resources.Quantity(fmt.Sprintf("%dG", *info.LocalStorageCapacity))
+	return resources.Quantity(fmt.Sprintf("%dG", tea.Int64Value(info.LocalStorageCapacity)))
 }
 
 func privateIPv4Address(info *ecsclient.DescribeInstanceTypesResponseBodyInstanceTypesInstanceType) *resource.Quantity {

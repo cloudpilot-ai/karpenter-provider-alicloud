@@ -23,16 +23,17 @@ import (
 	"strings"
 	"time"
 
+	"sigs.k8s.io/karpenter/pkg/operator/injection"
+
 	"github.com/samber/lo"
 	v1 "k8s.io/api/core/v1"
 	"knative.dev/pkg/apis"
 
 	"sigs.k8s.io/karpenter/pkg/apis/v1beta1"
-	"sigs.k8s.io/karpenter/pkg/operator/injection"
 )
 
 // Convert v1 NodePool to v1beta1 NodePool
-func (in *NodePool) ConvertTo(ctx context.Context, to apis.Convertible) error {
+func (in *NodePool) ConvertTo(_ context.Context, to apis.Convertible) error {
 	v1beta1NP := to.(*v1beta1.NodePool)
 	v1beta1NP.ObjectMeta = in.ObjectMeta
 
@@ -45,6 +46,8 @@ func (in *NodePool) ConvertTo(ctx context.Context, to apis.Convertible) error {
 	// Remove the annotations from the v1beta1 NodeClaim on the convert back
 	delete(v1beta1NP.Annotations, KubeletCompatibilityAnnotationKey)
 	delete(v1beta1NP.Annotations, NodeClassReferenceAnnotationKey)
+	// Drop the annotation so when roundtripping from v1, to v1beta1, and back to v1 the migration resource controller can re-annotate it
+	delete(v1beta1NP.Annotations, StoredVersionMigratedKey)
 	return nil
 }
 
@@ -89,13 +92,15 @@ func (in *NodeClaimTemplate) convertTo(v1beta1np *v1beta1.NodeClaimTemplate, kub
 	})
 	// Convert the NodeClassReference depending on whether the annotation exists
 	v1beta1np.Spec.NodeClassRef = &v1beta1.NodeClassReference{}
-	if nodeClassReferenceAnnotation != "" {
-		if err := json.Unmarshal([]byte(nodeClassReferenceAnnotation), v1beta1np.Spec.NodeClassRef); err != nil {
-			return fmt.Errorf("unmarshaling nodeClassRef annotation, %w", err)
+	if in.Spec.NodeClassRef != nil {
+		if nodeClassReferenceAnnotation != "" {
+			if err := json.Unmarshal([]byte(nodeClassReferenceAnnotation), v1beta1np.Spec.NodeClassRef); err != nil {
+				return fmt.Errorf("unmarshaling nodeClassRef annotation, %w", err)
+			}
+		} else {
+			v1beta1np.Spec.NodeClassRef.Name = in.Spec.NodeClassRef.Name
+			v1beta1np.Spec.NodeClassRef.Kind = in.Spec.NodeClassRef.Kind
 		}
-	} else {
-		v1beta1np.Spec.NodeClassRef.Name = in.Spec.NodeClassRef.Name
-		v1beta1np.Spec.NodeClassRef.Kind = in.Spec.NodeClassRef.Kind
 	}
 	if kubeletAnnotation != "" {
 		v1beta1kubelet := &v1beta1.KubeletConfiguration{}
@@ -123,10 +128,11 @@ func (in *NodePool) ConvertFrom(ctx context.Context, v1beta1np apis.Convertible)
 		return err
 	}
 	if kubeletAnnotation == "" {
-		in.Annotations = lo.OmitByKeys(in.Annotations, []string{KubeletCompatibilityAnnotationKey})
+		delete(in.Annotations, KubeletCompatibilityAnnotationKey)
 	} else {
 		in.Annotations = lo.Assign(in.Annotations, map[string]string{KubeletCompatibilityAnnotationKey: kubeletAnnotation})
 	}
+
 	nodeClassRefAnnotation, err := json.Marshal(v1beta1NP.Spec.Template.Spec.NodeClassRef)
 	if err != nil {
 		return fmt.Errorf("marshaling nodeClassRef annotation, %w", err)
@@ -175,11 +181,14 @@ func (in *NodeClaimTemplate) convertFrom(ctx context.Context, v1beta1np *v1beta1
 		}
 	})
 
-	defaultNodeClassGVK := injection.GetNodeClasses(ctx)[0]
-	in.Spec.NodeClassRef = &NodeClassReference{
-		Name:  v1beta1np.Spec.NodeClassRef.Name,
-		Kind:  lo.Ternary(v1beta1np.Spec.NodeClassRef.Kind == "", defaultNodeClassGVK.Kind, v1beta1np.Spec.NodeClassRef.Kind),
-		Group: lo.Ternary(v1beta1np.Spec.NodeClassRef.APIVersion == "", defaultNodeClassGVK.Group, strings.Split(v1beta1np.Spec.NodeClassRef.APIVersion, "/")[0]),
+	in.Spec.NodeClassRef = &NodeClassReference{}
+	if v1beta1np.Spec.NodeClassRef != nil {
+		defaultNodeClassGVK := injection.GetNodeClasses(ctx)[0]
+		in.Spec.NodeClassRef = &NodeClassReference{
+			Name:  v1beta1np.Spec.NodeClassRef.Name,
+			Kind:  lo.Ternary(v1beta1np.Spec.NodeClassRef.Kind == "", defaultNodeClassGVK.Kind, v1beta1np.Spec.NodeClassRef.Kind),
+			Group: lo.Ternary(v1beta1np.Spec.NodeClassRef.APIVersion == "", defaultNodeClassGVK.Group, strings.Split(v1beta1np.Spec.NodeClassRef.APIVersion, "/")[0]),
+		}
 	}
 	if v1beta1np.Spec.Kubelet != nil {
 		kubelet, err := json.Marshal(v1beta1np.Spec.Kubelet)

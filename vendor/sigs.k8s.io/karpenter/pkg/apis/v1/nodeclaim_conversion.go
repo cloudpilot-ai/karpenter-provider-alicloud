@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/samber/lo"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -44,6 +45,8 @@ func (in *NodeClaim) ConvertTo(ctx context.Context, to apis.Convertible) error {
 	// Remove the annotations from the v1beta1 NodeClaim on the convert back
 	delete(v1beta1NC.Annotations, KubeletCompatibilityAnnotationKey)
 	delete(v1beta1NC.Annotations, NodeClassReferenceAnnotationKey)
+	// Drop the annotation so when roundtripping from v1, to v1beta1, and back to v1 the migration resource controller can re-annotate it
+	delete(v1beta1NC.Annotations, StoredVersionMigratedKey)
 	return nil
 }
 
@@ -63,13 +66,15 @@ func (in *NodeClaimSpec) convertTo(v1beta1nc *v1beta1.NodeClaimSpec, kubeletAnno
 	})
 	// Convert the NodeClassReference depending on whether the annotation exists
 	v1beta1nc.NodeClassRef = &v1beta1.NodeClassReference{}
-	if nodeClassReferenceAnnotation != "" {
-		if err := json.Unmarshal([]byte(nodeClassReferenceAnnotation), v1beta1nc.NodeClassRef); err != nil {
-			return fmt.Errorf("unmarshaling nodeClassRef annotation, %w", err)
+	if in.NodeClassRef != nil {
+		if nodeClassReferenceAnnotation != "" {
+			if err := json.Unmarshal([]byte(nodeClassReferenceAnnotation), v1beta1nc.NodeClassRef); err != nil {
+				return fmt.Errorf("unmarshaling nodeClassRef annotation, %w", err)
+			}
+		} else {
+			v1beta1nc.NodeClassRef.Name = in.NodeClassRef.Name
+			v1beta1nc.NodeClassRef.Kind = in.NodeClassRef.Kind
 		}
-	} else {
-		v1beta1nc.NodeClassRef.Name = in.NodeClassRef.Name
-		v1beta1nc.NodeClassRef.Kind = in.NodeClassRef.Kind
 	}
 	if kubeletAnnotation != "" {
 		v1beta1kubelet := &v1beta1.KubeletConfiguration{}
@@ -151,11 +156,14 @@ func (in *NodeClaimSpec) convertFrom(ctx context.Context, v1beta1nc *v1beta1.Nod
 		}
 	})
 
-	defaultNodeClassGVK := injection.GetNodeClasses(ctx)[0]
-	in.NodeClassRef = &NodeClassReference{
-		Name:  v1beta1nc.NodeClassRef.Name,
-		Kind:  lo.Ternary(v1beta1nc.NodeClassRef.Kind == "", defaultNodeClassGVK.Kind, v1beta1nc.NodeClassRef.Kind),
-		Group: lo.Ternary(v1beta1nc.NodeClassRef.APIVersion == "", defaultNodeClassGVK.Group, strings.Split(v1beta1nc.NodeClassRef.APIVersion, "/")[0]),
+	in.NodeClassRef = &NodeClassReference{}
+	if v1beta1nc.NodeClassRef != nil {
+		defaultNodeClassGVK := injection.GetNodeClasses(ctx)[0]
+		in.NodeClassRef = &NodeClassReference{
+			Name:  v1beta1nc.NodeClassRef.Name,
+			Kind:  lo.Ternary(v1beta1nc.NodeClassRef.Kind == "", defaultNodeClassGVK.Kind, v1beta1nc.NodeClassRef.Kind),
+			Group: lo.Ternary(v1beta1nc.NodeClassRef.APIVersion == "", defaultNodeClassGVK.Group, strings.Split(v1beta1nc.NodeClassRef.APIVersion, "/")[0]),
+		}
 	}
 
 	if v1beta1nc.Kubelet != nil {

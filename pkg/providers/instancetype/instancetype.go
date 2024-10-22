@@ -52,18 +52,7 @@ type Provider interface {
 	UpdateInstanceTypeOfferings(ctx context.Context) error
 }
 
-type defaultProviderOptions struct {
-	instanceTypeFilterMap func(*cloudprovider.InstanceType, *v1alpha1.ECSNodeClass) (*cloudprovider.InstanceType, bool)
-}
-
-var WithInstanceTypeFilterMap = func(instanceTypeFilterMap func(*cloudprovider.InstanceType, *v1alpha1.ECSNodeClass) (*cloudprovider.InstanceType, bool)) func(*defaultProviderOptions) {
-	return func(opts *defaultProviderOptions) {
-		opts.instanceTypeFilterMap = instanceTypeFilterMap
-	}
-}
-
 type DefaultProvider struct {
-	defaultProviderOptions
 	region          string
 	ecsClient       *ecsclient.Client
 	vSwitchProvider vswitch.Provider
@@ -90,7 +79,9 @@ type DefaultProvider struct {
 	instanceTypeOfferingsSeqNum uint64
 }
 
-func NewDefaultProvider(region string, ecsClient *ecsclient.Client, instanceTypesCache *cache.Cache, pricingProvider pricing.Provider, vSwitchProvider vswitch.Provider) *DefaultProvider {
+func NewDefaultProvider(region string, ecsClient *ecsclient.Client,
+	instanceTypesCache *cache.Cache, unavailableOfferingsCache *kcache.UnavailableOfferings,
+	pricingProvider pricing.Provider, vSwitchProvider vswitch.Provider) *DefaultProvider {
 	return &DefaultProvider{
 		ecsClient:             ecsClient,
 		region:                region,
@@ -99,9 +90,9 @@ func NewDefaultProvider(region string, ecsClient *ecsclient.Client, instanceType
 		instanceTypesInfo:     []*ecsclient.DescribeInstanceTypesResponseBodyInstanceTypesInstanceType{},
 		instanceTypeOfferings: map[string]sets.Set[string]{},
 		instanceTypesCache:    instanceTypesCache,
-		// unavailableOfferings:  unavailableOfferingsCache,
-		cm:                  pretty.NewChangeMonitor(),
-		instanceTypesSeqNum: 0,
+		unavailableOfferings:  unavailableOfferingsCache,
+		cm:                    pretty.NewChangeMonitor(),
+		instanceTypesSeqNum:   0,
 	}
 }
 
@@ -127,13 +118,15 @@ func (p *DefaultProvider) List(ctx context.Context, kc *v1alpha1.KubeletConfigur
 	if len(p.instanceTypeOfferings) == 0 {
 		return nil, errors.New("no instance types offerings found")
 	}
-	if len(nodeClass.Status.VSwitches) == 0 {
-		return nil, errors.New("no vswitches found")
-	}
+	// TODO: resolve the zones
+	//if len(nodeClass.Status.VSwitches) == 0 {
+	//	return nil, errors.New("no vswitches found")
+	//}
 
-	vSwitchsZones := sets.New(lo.Map(nodeClass.Status.VSwitches, func(s v1alpha1.VSwitch, _ int) string {
-		return s.ZoneID
-	})...)
+	//vSwitchsZones := sets.New(lo.Map(nodeClass.Status.VSwitches, func(s v1alpha1.VSwitch, _ int) string {
+	//	return s.ZoneID
+	//})...)
+	vSwitchsZones := sets.New[string]("cn-shenzhen-a")
 
 	// Compute fully initialized instance types hash key
 	vSwitchZonesHash, _ := hashstructure.Hash(vSwitchsZones, hashstructure.FormatV2, &hashstructure.HashOptions{SlicesAsSets: true})
@@ -165,15 +158,14 @@ func (p *DefaultProvider) List(ctx context.Context, kc *v1alpha1.KubeletConfigur
 		log.FromContext(ctx).WithValues("zones", allZones.UnsortedList()).V(1).Info("discovered zones")
 	}
 
-	result := lo.FilterMap(p.instanceTypesInfo, func(i *ecsclient.DescribeInstanceTypesResponseBodyInstanceTypesInstanceType, _ int) (*cloudprovider.InstanceType, bool) {
-
+	result := lo.Map(p.instanceTypesInfo, func(i *ecsclient.DescribeInstanceTypesResponseBodyInstanceTypesInstanceType, _ int) *cloudprovider.InstanceType {
 		// !!! Important !!!
 		// Any changes to the values passed into the NewInstanceType method will require making updates to the cache key
 		// so that Karpenter is able to cache the set of InstanceTypes based on values that alter the set of instance types
 		// !!! Important !!!
-		return p.instanceTypeFilterMap(NewInstanceType(ctx, i, kc, p.region,
-			p.createOfferings(ctx, *i.InstanceTypeId, allZones, p.instanceTypeOfferings[*i.InstanceTypeId], nodeClass.Status.VSwitches),
-		), nodeClass)
+		return NewInstanceType(ctx, i, kc, p.region,
+			p.createOfferings(ctx, *i.InstanceTypeId, allZones,
+				p.instanceTypeOfferings[*i.InstanceTypeId], nodeClass.Status.VSwitches))
 	})
 
 	p.instanceTypesCache.SetDefault(key, result)
@@ -190,6 +182,7 @@ func (p *DefaultProvider) UpdateInstanceTypes(ctx context.Context) error {
 
 	instanceTypes, err := getAllInstanceTypes(p.ecsClient)
 	if err != nil {
+		log.FromContext(ctx).Error(err, "failed to get instance types")
 		return err
 	}
 
@@ -219,11 +212,12 @@ func (p *DefaultProvider) UpdateInstanceTypeOfferings(ctx context.Context) error
 		RegionId:            tea.String(p.region),
 		DestinationResource: tea.String("InstanceType"),
 	}
-	runtime := &util.RuntimeOptions{}
 
 	// TODO: we may use other better API in the future.
-	resp, err := p.ecsClient.DescribeAvailableResourceWithOptions(describeAvailableResourceRequest, runtime)
+	resp, err := p.ecsClient.DescribeAvailableResourceWithOptions(
+		describeAvailableResourceRequest, &util.RuntimeOptions{})
 	if err != nil {
+		log.FromContext(ctx).Error(err, "failed to get instance type offerings")
 		return err
 	}
 
@@ -279,15 +273,14 @@ func getAllInstanceTypes(client *ecsclient.Client) ([]*ecsclient.DescribeInstanc
 			The maximum value of Max Results (maximum number of entries per page) parameter is 100,
 			for users who have called this API in 2022, the maximum value of Max Results parameter is still 1600,
 			on and after November 15, 2023, we will reduce the maximum value of Max Results parameter to 100 for all users,
-			and no longer support 1600, if If you do not pass the Next Token parameter for paging when you call this API,
+			and no longer support 1600, if you do not pass the Next Token parameter for paging when you call this API,
 			only the first page of the specification (no more than 100 items) will be returned by default.
 		*/
 		MaxResults: tea.Int64(100),
 	}
-	runtime := &util.RuntimeOptions{}
 
 	for {
-		resp, err := client.DescribeInstanceTypesWithOptions(describeInstanceTypesRequest, runtime)
+		resp, err := client.DescribeInstanceTypesWithOptions(describeInstanceTypesRequest, &util.RuntimeOptions{})
 		if err != nil {
 			return nil, err
 		}
@@ -326,17 +319,19 @@ func (p *DefaultProvider) createOfferings(_ context.Context, instanceType string
 		})
 
 		if odOK {
+			// TODO: fix here
 			isUnavailable := p.unavailableOfferings.IsUnavailable(instanceType, zone, v1beta1.CapacityTypeOnDemand)
-			available := !isUnavailable && odOK && instanceTypeZones.Has(zone) && hasVSwitch
+			_ = !isUnavailable && odOK && instanceTypeZones.Has(zone) && hasVSwitch
 
-			offerings = append(offerings, p.createOffering(zone, v1beta1.CapacityTypeOnDemand, &vswitch, odPrice, available))
+			offerings = append(offerings, p.createOffering(zone, v1beta1.CapacityTypeOnDemand, &vswitch, odPrice, true))
 		}
 
 		if spotOK {
+			// TODO: fix here
 			isUnavailable := p.unavailableOfferings.IsUnavailable(instanceType, zone, v1beta1.CapacityTypeSpot)
-			available := !isUnavailable && spotOK && instanceTypeZones.Has(zone) && hasVSwitch
+			_ = !isUnavailable && spotOK && instanceTypeZones.Has(zone) && hasVSwitch
 
-			offerings = append(offerings, p.createOffering(zone, v1beta1.CapacityTypeSpot, &vswitch, spotPrice, available))
+			offerings = append(offerings, p.createOffering(zone, v1beta1.CapacityTypeSpot, &vswitch, spotPrice, true))
 		}
 	}
 	return offerings
