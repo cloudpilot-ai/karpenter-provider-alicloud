@@ -49,6 +49,11 @@ const (
 	GiBBytesRatio = 1024 * 1024 * 1024
 )
 
+type ZoneData struct {
+	ID        string
+	Available bool
+}
+
 func NewInstanceType(ctx context.Context, info *ecsclient.DescribeInstanceTypesResponseBodyInstanceTypesInstanceType, kc *v1alpha1.KubeletConfiguration, region string, offerings cloudprovider.Offerings) *cloudprovider.InstanceType {
 
 	it := &cloudprovider.InstanceType{

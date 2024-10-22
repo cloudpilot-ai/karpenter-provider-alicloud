@@ -66,8 +66,8 @@ type DefaultProvider struct {
 
 	instanceTypesInfo []*ecsclient.DescribeInstanceTypesResponseBodyInstanceTypesInstanceType
 
-	muInstanceTypeOfferings sync.RWMutex
-	instanceTypeOfferings   map[string]sets.Set[string]
+	muInstanceTypesOfferings sync.RWMutex
+	instanceTypesOfferings   map[string]sets.Set[string]
 
 	instanceTypesCache *cache.Cache
 
@@ -75,24 +75,24 @@ type DefaultProvider struct {
 	cm                   *pretty.ChangeMonitor
 	// instanceTypesSeqNum is a monotonically increasing change counter used to avoid the expensive hashing operation on instance types
 	instanceTypesSeqNum uint64
-	// instanceTypeOfferingsSeqNum is a monotonically increasing change counter used to avoid the expensive hashing operation on instance types
-	instanceTypeOfferingsSeqNum uint64
+	// instanceTypesOfferingsSeqNum is a monotonically increasing change counter used to avoid the expensive hashing operation on instance types
+	instanceTypesOfferingsSeqNum uint64
 }
 
 func NewDefaultProvider(region string, ecsClient *ecsclient.Client,
 	instanceTypesCache *cache.Cache, unavailableOfferingsCache *kcache.UnavailableOfferings,
 	pricingProvider pricing.Provider, vSwitchProvider vswitch.Provider) *DefaultProvider {
 	return &DefaultProvider{
-		ecsClient:             ecsClient,
-		region:                region,
-		vSwitchProvider:       vSwitchProvider,
-		pricingProvider:       pricingProvider,
-		instanceTypesInfo:     []*ecsclient.DescribeInstanceTypesResponseBodyInstanceTypesInstanceType{},
-		instanceTypeOfferings: map[string]sets.Set[string]{},
-		instanceTypesCache:    instanceTypesCache,
-		unavailableOfferings:  unavailableOfferingsCache,
-		cm:                    pretty.NewChangeMonitor(),
-		instanceTypesSeqNum:   0,
+		ecsClient:              ecsClient,
+		region:                 region,
+		vSwitchProvider:        vSwitchProvider,
+		pricingProvider:        pricingProvider,
+		instanceTypesInfo:      []*ecsclient.DescribeInstanceTypesResponseBodyInstanceTypesInstanceType{},
+		instanceTypesOfferings: map[string]sets.Set[string]{},
+		instanceTypesCache:     instanceTypesCache,
+		unavailableOfferings:   unavailableOfferingsCache,
+		cm:                     pretty.NewChangeMonitor(),
+		instanceTypesSeqNum:    0,
 	}
 }
 
@@ -105,9 +105,9 @@ func (p *DefaultProvider) LivenessProbe(req *http.Request) error {
 
 func (p *DefaultProvider) List(ctx context.Context, kc *v1alpha1.KubeletConfiguration, nodeClass *v1alpha1.ECSNodeClass) ([]*cloudprovider.InstanceType, error) {
 	p.muInstanceTypeInfo.RLock()
-	p.muInstanceTypeOfferings.RLock()
+	p.muInstanceTypesOfferings.RLock()
 	defer p.muInstanceTypeInfo.RUnlock()
-	defer p.muInstanceTypeOfferings.RUnlock()
+	defer p.muInstanceTypesOfferings.RUnlock()
 
 	if kc == nil {
 		kc = &v1alpha1.KubeletConfiguration{}
@@ -115,25 +115,23 @@ func (p *DefaultProvider) List(ctx context.Context, kc *v1alpha1.KubeletConfigur
 	if len(p.instanceTypesInfo) == 0 {
 		return nil, errors.New("no instance types found")
 	}
-	if len(p.instanceTypeOfferings) == 0 {
+	if len(p.instanceTypesOfferings) == 0 {
 		return nil, errors.New("no instance types offerings found")
 	}
-	// TODO: resolve the zones
-	//if len(nodeClass.Status.VSwitches) == 0 {
-	//	return nil, errors.New("no vswitches found")
-	//}
+	if len(nodeClass.Status.VSwitches) == 0 {
+		return nil, errors.New("no vswitches found")
+	}
 
-	//vSwitchsZones := sets.New(lo.Map(nodeClass.Status.VSwitches, func(s v1alpha1.VSwitch, _ int) string {
-	//	return s.ZoneID
-	//})...)
-	vSwitchsZones := sets.New[string]("cn-shenzhen-a")
+	vSwitchsZones := sets.New(lo.Map(nodeClass.Status.VSwitches, func(s v1alpha1.VSwitch, _ int) string {
+		return s.ZoneID
+	})...)
 
 	// Compute fully initialized instance types hash key
 	vSwitchZonesHash, _ := hashstructure.Hash(vSwitchsZones, hashstructure.FormatV2, &hashstructure.HashOptions{SlicesAsSets: true})
 	kcHash, _ := hashstructure.Hash(kc, hashstructure.FormatV2, &hashstructure.HashOptions{SlicesAsSets: true})
 	key := fmt.Sprintf("%d-%d-%d-%016x-%016x",
 		p.instanceTypesSeqNum,
-		p.instanceTypeOfferingsSeqNum,
+		p.instanceTypesOfferingsSeqNum,
 		p.unavailableOfferings.SeqNum,
 		vSwitchZonesHash,
 		kcHash,
@@ -146,9 +144,9 @@ func (p *DefaultProvider) List(ctx context.Context, kc *v1alpha1.KubeletConfigur
 	}
 
 	// Get all zones across all offerings
-	// We don't use this in the cache key since this is produced from our instanceTypeOfferings which we do cache
+	// We don't use this in the cache key since this is produced from our instanceTypesOfferings which we do cache
 	allZones := sets.New[string]()
-	for _, offeringZones := range p.instanceTypeOfferings {
+	for _, offeringZones := range p.instanceTypesOfferings {
 		for zone := range offeringZones {
 			allZones.Insert(zone)
 		}
@@ -159,13 +157,29 @@ func (p *DefaultProvider) List(ctx context.Context, kc *v1alpha1.KubeletConfigur
 	}
 
 	result := lo.Map(p.instanceTypesInfo, func(i *ecsclient.DescribeInstanceTypesResponseBodyInstanceTypesInstanceType, _ int) *cloudprovider.InstanceType {
+		zoneData := lo.Map(allZones.UnsortedList(), func(zoneID string, _ int) ZoneData {
+			if !p.instanceTypesOfferings[lo.FromPtr(i.InstanceTypeId)].Has(zoneID) || !vSwitchsZones.Has(zoneID) {
+				return ZoneData{
+					ID:        zoneID,
+					Available: false,
+				}
+			}
+			return ZoneData{
+				ID:        zoneID,
+				Available: true,
+			}
+		})
+
+		// TODO: wait createOfferings ready
+		_ = zoneData
+
 		// !!! Important !!!
 		// Any changes to the values passed into the NewInstanceType method will require making updates to the cache key
 		// so that Karpenter is able to cache the set of InstanceTypes based on values that alter the set of instance types
 		// !!! Important !!!
 		return NewInstanceType(ctx, i, kc, p.region,
 			p.createOfferings(ctx, *i.InstanceTypeId, allZones,
-				p.instanceTypeOfferings[*i.InstanceTypeId], nodeClass.Status.VSwitches))
+				p.instanceTypesOfferings[*i.InstanceTypeId], nodeClass.Status.VSwitches))
 	})
 
 	p.instanceTypesCache.SetDefault(key, result)
@@ -174,7 +188,7 @@ func (p *DefaultProvider) List(ctx context.Context, kc *v1alpha1.KubeletConfigur
 
 func (p *DefaultProvider) UpdateInstanceTypes(ctx context.Context) error {
 	// DO NOT REMOVE THIS LOCK ----------------------------------------------------------------------------
-	// We lock here so that multiple callers to getInstanceTypeOfferings do not result in cache misses and multiple
+	// We lock here so that multiple callers to getInstanceTypesOfferings do not result in cache misses and multiple
 	// calls to ECS when we could have just made one call.
 
 	p.muInstanceTypeInfo.Lock()
@@ -200,14 +214,14 @@ func (p *DefaultProvider) UpdateInstanceTypes(ctx context.Context) error {
 
 func (p *DefaultProvider) UpdateInstanceTypeOfferings(ctx context.Context) error {
 	// DO NOT REMOVE THIS LOCK ----------------------------------------------------------------------------
-	// We lock here so that multiple callers to getInstanceTypeOfferings do not result in cache misses and multiple
+	// We lock here so that multiple callers to getInstanceTypesOfferings do not result in cache misses and multiple
 	// calls to ECS when we could have just made one call.
 
-	p.muInstanceTypeOfferings.Lock()
-	defer p.muInstanceTypeOfferings.Unlock()
+	p.muInstanceTypesOfferings.Lock()
+	defer p.muInstanceTypesOfferings.Unlock()
 
 	// Get offerings from ECS
-	instanceTypeOfferings := map[string]sets.Set[string]{}
+	instanceTypesOfferings := map[string]sets.Set[string]{}
 	describeAvailableResourceRequest := &ecsclient.DescribeAvailableResourceRequest{
 		RegionId:            tea.String(p.region),
 		DestinationResource: tea.String("InstanceType"),
@@ -228,21 +242,21 @@ func (p *DefaultProvider) UpdateInstanceTypeOfferings(ctx context.Context) error
 	for _, az := range resp.Body.AvailableZones.AvailableZone {
 		// TODO: Later, `ClosedWithStock` will be tested to determine if `ClosedWithStock` should be added.
 		if *az.StatusCategory == "WithStock" { // WithStock, ClosedWithStock, WithoutStock, ClosedWithoutStock
-			processAvailableResources(az, instanceTypeOfferings)
+			processAvailableResources(az, instanceTypesOfferings)
 		}
 	}
 
-	if p.cm.HasChanged("instance-type-offering", instanceTypeOfferings) {
+	if p.cm.HasChanged("instance-type-offering", instanceTypesOfferings) {
 		// Only update instanceTypesSeqNun with the instance type offerings  have been changed
 		// This is to not create new keys with duplicate instance type offerings option
-		atomic.AddUint64(&p.instanceTypeOfferingsSeqNum, 1)
-		log.FromContext(ctx).WithValues("instance-type-count", len(instanceTypeOfferings)).V(1).Info("discovered offerings for instance types")
+		atomic.AddUint64(&p.instanceTypesOfferingsSeqNum, 1)
+		log.FromContext(ctx).WithValues("instance-type-count", len(instanceTypesOfferings)).V(1).Info("discovered offerings for instance types")
 	}
-	p.instanceTypeOfferings = instanceTypeOfferings
+	p.instanceTypesOfferings = instanceTypesOfferings
 	return nil
 }
 
-func processAvailableResources(az *ecsclient.DescribeAvailableResourceResponseBodyAvailableZonesAvailableZone, instanceTypeOfferings map[string]sets.Set[string]) {
+func processAvailableResources(az *ecsclient.DescribeAvailableResourceResponseBodyAvailableZonesAvailableZone, instanceTypesOfferings map[string]sets.Set[string]) {
 	if az.AvailableResources == nil || az.AvailableResources.AvailableResource == nil {
 		return
 	}
@@ -255,10 +269,10 @@ func processAvailableResources(az *ecsclient.DescribeAvailableResourceResponseBo
 		for _, sr := range ar.SupportedResources.SupportedResource {
 			// TODO: Later, `ClosedWithStock` will be tested to determine if `ClosedWithStock` should be added.
 			if *sr.StatusCategory == "WithStock" { // WithStock, ClosedWithStock, WithoutStock, ClosedWithoutStock
-				if _, ok := instanceTypeOfferings[*sr.Value]; !ok {
-					instanceTypeOfferings[*sr.Value] = sets.New[string]()
+				if _, ok := instanceTypesOfferings[*sr.Value]; !ok {
+					instanceTypesOfferings[*sr.Value] = sets.New[string]()
 				}
-				instanceTypeOfferings[*sr.Value].Insert(*az.ZoneId)
+				instanceTypesOfferings[*sr.Value].Insert(*az.ZoneId)
 			}
 		}
 	}
@@ -357,6 +371,6 @@ func (p *DefaultProvider) createOffering(zone, capacityType string, vswitch *v1a
 
 func (p *DefaultProvider) Reset() {
 	p.instanceTypesInfo = []*ecsclient.DescribeInstanceTypesResponseBodyInstanceTypesInstanceType{}
-	p.instanceTypeOfferings = map[string]sets.Set[string]{}
+	p.instanceTypesOfferings = map[string]sets.Set[string]{}
 	p.instanceTypesCache.Flush()
 }
