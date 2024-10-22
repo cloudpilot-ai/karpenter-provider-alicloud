@@ -33,6 +33,7 @@ import (
 	"sigs.k8s.io/karpenter/pkg/utils/result"
 
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/apis/v1alpha1"
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/imagefamily"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/securitygroup"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/vswitch"
 )
@@ -46,14 +47,17 @@ type Controller struct {
 
 	vSwitch       *VSwitch
 	securitygroup *SecurityGroup
+	image         *Image
 }
 
-func NewController(kubeClient client.Client, vSwitchProvider vswitch.Provider, securitygroupProvider securitygroup.Provider) *Controller {
+func NewController(kubeClient client.Client, vSwitchProvider vswitch.Provider,
+	securitygroupProvider securitygroup.Provider, imageProvider imagefamily.Provider) *Controller {
 	return &Controller{
 		kubeClient: kubeClient,
 
 		vSwitch:       &VSwitch{vSwitchProvider: vSwitchProvider},
 		securitygroup: &SecurityGroup{securityGroupProvider: securitygroupProvider},
+		image:         &Image{imageProvider: imageProvider},
 	}
 }
 
@@ -84,6 +88,7 @@ func (c *Controller) Reconcile(ctx context.Context, nodeClass *v1alpha1.ECSNodeC
 	for _, reconciler := range []nodeClassStatusReconciler{
 		c.vSwitch,
 		c.securitygroup,
+		c.image,
 	} {
 		res, err := reconciler.Reconcile(ctx, nodeClass)
 		errs = multierr.Append(errs, err)
