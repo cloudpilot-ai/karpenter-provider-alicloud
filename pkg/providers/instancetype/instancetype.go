@@ -170,16 +170,12 @@ func (p *DefaultProvider) List(ctx context.Context, kc *v1alpha1.KubeletConfigur
 			}
 		})
 
-		// TODO: wait createOfferings ready
-		_ = zoneData
-
 		// !!! Important !!!
 		// Any changes to the values passed into the NewInstanceType method will require making updates to the cache key
 		// so that Karpenter is able to cache the set of InstanceTypes based on values that alter the set of instance types
 		// !!! Important !!!
 		return NewInstanceType(ctx, i, kc, p.region,
-			p.createOfferings(ctx, *i.InstanceTypeId, allZones,
-				p.instanceTypesOfferings[*i.InstanceTypeId], nodeClass.Status.VSwitches))
+			p.createOfferings(ctx, *i.InstanceTypeId, zoneData))
 	})
 
 	p.instanceTypesCache.SetDefault(key, result)
@@ -320,50 +316,38 @@ func getAllInstanceTypes(client *ecsclient.Client) ([]*ecsclient.DescribeInstanc
 // offering, you can do the following thanks to this invariant:
 //
 //	offering.Requirements.Get(v1.TopologyLabelZone).Any()
-func (p *DefaultProvider) createOfferings(_ context.Context, instanceType string, zones, instanceTypeZones sets.Set[string],
-	vswitchs []v1alpha1.VSwitch) []cloudprovider.Offering {
-
+func (p *DefaultProvider) createOfferings(_ context.Context, instanceType string, zones []ZoneData) []cloudprovider.Offering {
 	var offerings []cloudprovider.Offering
-	for zone := range zones {
+	for _, zone := range zones {
 		odPrice, odOK := p.pricingProvider.OnDemandPrice(instanceType)
-		spotPrice, spotOK := p.pricingProvider.SpotPrice(instanceType, zone)
-
-		vswitch, hasVSwitch := lo.Find(vswitchs, func(s v1alpha1.VSwitch) bool {
-			return s.ZoneID == zone
-		})
+		spotPrice, spotOK := p.pricingProvider.SpotPrice(instanceType, zone.ID)
 
 		if odOK {
-			// TODO: fix here
-			isUnavailable := p.unavailableOfferings.IsUnavailable(instanceType, zone, v1beta1.CapacityTypeOnDemand)
-			_ = !isUnavailable && odOK && instanceTypeZones.Has(zone) && hasVSwitch
+			isUnavailable := p.unavailableOfferings.IsUnavailable(instanceType, zone.ID, v1beta1.CapacityTypeOnDemand)
+			offeringAvailable := !isUnavailable && odOK && zone.Available
 
-			offerings = append(offerings, p.createOffering(zone, v1beta1.CapacityTypeOnDemand, &vswitch, odPrice, true))
+			offerings = append(offerings, p.createOffering(zone.ID, v1beta1.CapacityTypeOnDemand, odPrice, offeringAvailable))
 		}
 
 		if spotOK {
-			// TODO: fix here
-			isUnavailable := p.unavailableOfferings.IsUnavailable(instanceType, zone, v1beta1.CapacityTypeSpot)
-			_ = !isUnavailable && spotOK && instanceTypeZones.Has(zone) && hasVSwitch
+			isUnavailable := p.unavailableOfferings.IsUnavailable(instanceType, zone.ID, v1beta1.CapacityTypeSpot)
+			offeringAvailable := !isUnavailable && spotOK && zone.Available
 
-			offerings = append(offerings, p.createOffering(zone, v1beta1.CapacityTypeSpot, &vswitch, spotPrice, true))
+			offerings = append(offerings, p.createOffering(zone.ID, v1beta1.CapacityTypeSpot, spotPrice, offeringAvailable))
 		}
 	}
 	return offerings
 }
 
-func (p *DefaultProvider) createOffering(zone, capacityType string, vswitch *v1alpha1.VSwitch,
-	price float64, available bool) cloudprovider.Offering {
-
+func (p *DefaultProvider) createOffering(zone, capacityType string, price float64, available bool) cloudprovider.Offering {
 	offering := cloudprovider.Offering{
 		Requirements: scheduling.NewRequirements(
 			scheduling.NewRequirement(karpv1.CapacityTypeLabelKey, corev1.NodeSelectorOpIn, capacityType),
 			scheduling.NewRequirement(corev1.LabelTopologyZone, corev1.NodeSelectorOpIn, zone),
+			scheduling.NewRequirement(v1alpha1.LabelTopologyZoneID, corev1.NodeSelectorOpIn, zone),
 		),
 		Price:     price,
 		Available: available,
-	}
-	if vswitch.ZoneID != "" {
-		offering.Requirements.Add(scheduling.NewRequirement(v1alpha1.LabelTopologyZoneID, corev1.NodeSelectorOpIn, vswitch.ZoneID))
 	}
 
 	return offering
