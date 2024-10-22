@@ -25,6 +25,7 @@ const (
 	ConditionTypeVSwitchesReady      = "VSwitchesReady"
 	ConditionTypeSecurityGroupsReady = "SecurityGroupsReady"
 	ConditionTypeInstanceRAMReady    = "InstanceRAMReady"
+	ConditionTypeImagesReady         = "ImagesReady"
 )
 
 // VSwitch contains resolved VSwitch selector values utilized for node launch
@@ -84,6 +85,7 @@ func (in *ECSNodeClass) StatusConditions() status.ConditionSet {
 		ConditionTypeVSwitchesReady,
 		ConditionTypeSecurityGroupsReady,
 		ConditionTypeInstanceRAMReady,
+		ConditionTypeImagesReady,
 	).For(in)
 }
 

@@ -135,6 +135,7 @@ func (p *DefaultProvider) List(ctx context.Context) ([]*Instance, error) {
 				Value: tea.String(options.FromContext(ctx).ClusterName),
 			},
 		},
+		RegionId: p.ecsClient.RegionId,
 	}
 
 	runtime := &util.RuntimeOptions{}
