@@ -29,6 +29,7 @@ import (
 	alicache "github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/cache"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/imagefamily"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/instance"
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/instancetype"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/launchtemplate"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/pricing"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/securitygroup"
@@ -49,6 +50,7 @@ type Operator struct {
 	ImageResolver          imagefamily.Resolver
 	LaunchTemplateProvider launchtemplate.Provider
 	VersionProvider        version.Provider
+	InstanceTypeProvider   instancetype.Provider
 }
 
 func NewOperator(ctx context.Context, operator *operator.Operator) (context.Context, *Operator) {
@@ -100,6 +102,13 @@ func NewOperator(ctx context.Context, operator *operator.Operator) (context.Cont
 		"",
 	)
 
+	unavailableOfferingsCache := alicache.NewUnavailableOfferings()
+	instanceTypeProvider := instancetype.NewDefaultProvider(
+		*ecsClient.RegionId, ecsClient,
+		cache.New(alicache.InstanceTypesAndZonesTTL, alicache.DefaultCleanupInterval),
+		unavailableOfferingsCache,
+		pricingProvider, nil)
+
 	return ctx, &Operator{
 		Operator: operator,
 
@@ -111,5 +120,6 @@ func NewOperator(ctx context.Context, operator *operator.Operator) (context.Cont
 		ImageResolver:          imageResolver,
 		VersionProvider:        versionProvider,
 		LaunchTemplateProvider: launchTemplateProvider,
+		InstanceTypeProvider:   instanceTypeProvider,
 	}
 }

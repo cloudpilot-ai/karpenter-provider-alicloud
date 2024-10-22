@@ -26,7 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// ECSNodeClassSpec is the top level specification for the AliCloud Karpenter Provider.
+// ECSNodeClassSpec is the top level specification for the AlibabaCloud Karpenter Provider.
 // This will contain configuration necessary to launch instances in AliCloud.
 type ECSNodeClassSpec struct {
 	// VSwitchSelectorTerms is a list of or vSwitch selector terms. The terms are ORed.

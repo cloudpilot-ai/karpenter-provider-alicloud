@@ -408,10 +408,10 @@ func (in *StateNode) PodLimits() corev1.ResourceList {
 func (in *StateNode) MarkedForDeletion() bool {
 	// The Node is marked for deletion if:
 	//  1. The Node has MarkedForDeletion set
-	//  2. The Node has a NodeClaim counterpart and is actively deleting
+	//  2. The Node has a NodeClaim counterpart and is actively deleting (or the nodeclaim is marked as terminating)
 	//  3. The Node has no NodeClaim counterpart and is actively deleting
 	return in.markedForDeletion ||
-		(in.NodeClaim != nil && !in.NodeClaim.DeletionTimestamp.IsZero()) ||
+		(in.NodeClaim != nil && (!in.NodeClaim.DeletionTimestamp.IsZero() || in.NodeClaim.StatusConditions().Get(v1.ConditionTypeInstanceTerminating).IsTrue())) ||
 		(in.Node != nil && in.NodeClaim == nil && !in.Node.DeletionTimestamp.IsZero())
 }
 
@@ -504,7 +504,10 @@ func RequireNoScheduleTaint(ctx context.Context, kubeClient client.Client, addTa
 			node.Spec.Taints = append(node.Spec.Taints, v1.DisruptedNoScheduleTaint)
 		}
 		if !equality.Semantic.DeepEqual(stored, node) {
-			if err := kubeClient.Patch(ctx, node, client.StrategicMergeFrom(stored)); err != nil {
+			// We use client.MergeFromWithOptimisticLock because patching a list with a JSON merge patch
+			// can cause races due to the fact that it fully replaces the list on a change
+			// Here, we are updating the taint list
+			if err := kubeClient.Patch(ctx, node, client.MergeFromWithOptions(stored, client.MergeFromWithOptimisticLock{})); err != nil {
 				multiErr = multierr.Append(multiErr, fmt.Errorf("patching node %s, %w", node.Name, err))
 			}
 		}

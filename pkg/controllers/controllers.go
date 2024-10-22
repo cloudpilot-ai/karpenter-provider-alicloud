@@ -29,19 +29,27 @@ import (
 	nodeclaimgarbagecollection "github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/controllers/nodeclaim/garbagecollection"
 	nodeclaimtagging "github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/controllers/nodeclaim/tagging"
 	nodeclasshash "github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/controllers/nodeclass/hash"
+	nodeclaasstatus "github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/controllers/nodeclass/status"
+	providersinstancetype "github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/controllers/providers/instancetype"
 	controllerspricing "github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/controllers/providers/pricing"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/instance"
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/instancetype"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/pricing"
 )
 
-func NewControllers(ctx context.Context, mgr manager.Manager, clk clock.Clock, kubeClient client.Client, recorder events.Recorder,
-	cloudProvider cloudprovider.CloudProvider, instanceProvider instance.Provider, pricingProvider pricing.Provider) []controller.Controller {
+func NewControllers(ctx context.Context, mgr manager.Manager, clk clock.Clock,
+	kubeClient client.Client, recorder events.Recorder,
+	cloudProvider cloudprovider.CloudProvider, instanceProvider instance.Provider,
+	instanceTypeProvider instancetype.Provider,
+	pricingProvider pricing.Provider) []controller.Controller {
 
 	controllers := []controller.Controller{
 		nodeclasshash.NewController(kubeClient),
+		nodeclaasstatus.NewController(kubeClient),
 		controllerspricing.NewController(pricingProvider),
 		nodeclaimgarbagecollection.NewController(kubeClient, cloudProvider),
 		nodeclaimtagging.NewController(kubeClient, instanceProvider),
+		providersinstancetype.NewController(instanceTypeProvider),
 	}
 	return controllers
 }

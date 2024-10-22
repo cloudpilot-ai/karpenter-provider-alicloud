@@ -59,9 +59,16 @@ type CloudProvider struct {
 	instanceProvider     instance.Provider
 }
 
-func New(kubeClient client.Client, recorder events.Recorder) *CloudProvider {
+func New(kubeClient client.Client,
+	recorder events.Recorder,
+	instanceTypeProvider instancetype.Provider,
+	instanceProvider instance.Provider) *CloudProvider {
 	return &CloudProvider{
 		kubeClient: kubeClient,
+		recorder:   recorder,
+
+		instanceTypeProvider: instanceTypeProvider,
+		instanceProvider:     instanceProvider,
 	}
 }
 

@@ -1,0 +1,11 @@
+apiVersion: karpenter.k8s.alicloud/v1alpha1
+kind: ECSNodeClass
+metadata:
+  name: defaultnodeclass
+spec:
+  vSwitchSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "cluster-demonstration" # replace with your cluster name
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "cluster-demonstration" # replace with your cluster name
