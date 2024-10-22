@@ -113,7 +113,7 @@ require (
 	k8s.io/cloud-provider v0.30.3 // indirect
 	k8s.io/component-base v0.30.3 // indirect
 	k8s.io/csi-translation-lib v0.30.3 // indirect
-	k8s.io/klog v1.0.0 // indirect
+	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/kube-openapi v0.0.0-20240228011516-70dd3763d340 // indirect
 	knative.dev/pkg v0.0.0-20231010144348-ca8c009405dd

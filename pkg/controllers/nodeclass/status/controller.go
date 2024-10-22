@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"github.com/awslabs/operatorpkg/reasonable"
+	"go.uber.org/multierr"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	controllerruntime "sigs.k8s.io/controller-runtime"
@@ -29,17 +30,30 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/karpenter/pkg/operator/injection"
+	"sigs.k8s.io/karpenter/pkg/utils/result"
 
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/apis/v1alpha1"
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/securitygroup"
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/vswitch"
 )
+
+type nodeClassStatusReconciler interface {
+	Reconcile(context.Context, *v1alpha1.ECSNodeClass) (reconcile.Result, error)
+}
 
 type Controller struct {
 	kubeClient client.Client
+
+	vSwitch       *VSwitch
+	securitygroup *SecurityGroup
 }
 
-func NewController(kubeClient client.Client) *Controller {
+func NewController(kubeClient client.Client, vSwitchProvider vswitch.Provider, securitygroupProvider securitygroup.Provider) *Controller {
 	return &Controller{
 		kubeClient: kubeClient,
+
+		vSwitch:       &VSwitch{vSwitchProvider: vSwitchProvider},
+		securitygroup: &SecurityGroup{securityGroupProvider: securitygroupProvider},
 	}
 }
 
@@ -64,8 +78,17 @@ func (c *Controller) Reconcile(ctx context.Context, nodeClass *v1alpha1.ECSNodeC
 
 	// TODO: implement different conditions setup
 	nodeClass.StatusConditions().SetTrue(v1alpha1.ConditionTypeInstanceRAMReady)
-	nodeClass.StatusConditions().SetTrue(v1alpha1.ConditionTypeSecurityGroupsReady)
-	nodeClass.StatusConditions().SetTrue(v1alpha1.ConditionTypeVSwitchsReady)
+
+	var results []reconcile.Result
+	var errs error
+	for _, reconciler := range []nodeClassStatusReconciler{
+		c.vSwitch,
+		c.securitygroup,
+	} {
+		res, err := reconciler.Reconcile(ctx, nodeClass)
+		errs = multierr.Append(errs, err)
+		results = append(results, res)
+	}
 
 	if !equality.Semantic.DeepEqual(stored, nodeClass) {
 		// We use client.MergeFromWithOptimisticLock because patching a list with a JSON merge patch
@@ -75,11 +98,14 @@ func (c *Controller) Reconcile(ctx context.Context, nodeClass *v1alpha1.ECSNodeC
 			if errors.IsConflict(err) {
 				return reconcile.Result{Requeue: true}, nil
 			}
-			return reconcile.Result{}, client.IgnoreNotFound(err)
+			errs = multierr.Append(errs, client.IgnoreNotFound(err))
 		}
 	}
 
-	return reconcile.Result{}, nil
+	if errs != nil {
+		return reconcile.Result{}, errs
+	}
+	return result.Min(results...), nil
 }
 
 func (c *Controller) Register(_ context.Context, m manager.Manager) error {

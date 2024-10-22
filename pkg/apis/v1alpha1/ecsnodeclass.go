@@ -88,7 +88,7 @@ type VSwitchSelectorTerm struct {
 // SecurityGroupSelectorTerm defines selection logic for a security group used by Karpenter to launch nodes.
 // If multiple fields are used for selection, the requirements are ANDed.
 type SecurityGroupSelectorTerm struct {
-	// Tags is a map of key/value tags used to select subnets
+	// Tags is a map of key/value tags used to select vSwitches
 	// Specifying '*' for a value selects all values for a given tag key.
 	// +kubebuilder:validation:XValidation:message="empty tag keys aren't supported",rule="self.all(k, k != '')"
 	// +kubebuilder:validation:MaxProperties:=20

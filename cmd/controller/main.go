@@ -59,6 +59,9 @@ func main() {
 			op.InstanceProvider,
 			op.InstanceTypeProvider,
 			op.PricingProvider,
+			op.VSwitchProvider,
+			op.SecurityGroupProvider,
+			op.LaunchTemplateProvider,
 		)...).
 		Start(ctx, cloudProvider)
 }

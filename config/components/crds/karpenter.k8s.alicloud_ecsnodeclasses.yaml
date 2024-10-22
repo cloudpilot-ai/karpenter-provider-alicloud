@@ -257,7 +257,7 @@ spec:
                       additionalProperties:
                         type: string
                       description: |-
-                        Tags is a map of key/value tags used to select subnets
+                        Tags is a map of key/value tags used to select vSwitches
                         Specifying '*' for a value selects all values for a given tag key.
                       maxProperties: 20
                       type: object
