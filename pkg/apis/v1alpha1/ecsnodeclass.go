@@ -59,7 +59,7 @@ type ECSNodeClassSpec struct {
 	// +optional
 	UserData *string `json:"userData,omitempty"`
 	// KubeletConfiguration defines args to be used when configuring kubelet on provisioned nodes.
-	// They are a subset of the upstream types, recognizing not all options may be supported.
+	// They are a vswitch of the upstream types, recognizing not all options may be supported.
 	// Wherever possible, the types and names should reflect the upstream kubelet types.
 	// +kubebuilder:validation:XValidation:message="imageGCHighThresholdPercent must be greater than imageGCLowThresholdPercent",rule="has(self.imageGCHighThresholdPercent) && has(self.imageGCLowThresholdPercent) ?  self.imageGCHighThresholdPercent > self.imageGCLowThresholdPercent  : true"
 	// +kubebuilder:validation:XValidation:message="evictionSoft OwnerKey does not have a matching evictionSoftGracePeriod",rule="has(self.evictionSoft) ? self.evictionSoft.all(e, (e in self.evictionSoftGracePeriod)):true"
@@ -69,6 +69,15 @@ type ECSNodeClassSpec struct {
 	// SystemDisk to be applied to provisioned nodes.
 	// +optional
 	SystemDisk *SystemDisk `json:"systemDisk,omitempty"`
+	// Tags to be applied on ecs resources like instances and launch templates.
+	// +kubebuilder:validation:XValidation:message="empty tag keys aren't supported",rule="self.all(k, k != '')"
+	// +kubebuilder:validation:XValidation:message="tag contains a restricted tag matching ecs:ecs-cluster-name",rule="self.all(k, k !='ecs:ecs-cluster-name')"
+	// +kubebuilder:validation:XValidation:message="tag contains a restricted tag matching kubernetes.io/cluster/",rule="self.all(k, !k.startsWith('kubernetes.io/cluster') )"
+	// +kubebuilder:validation:XValidation:message="tag contains a restricted tag matching karpenter.sh/nodepool",rule="self.all(k, k != 'karpenter.sh/nodepool')"
+	// +kubebuilder:validation:XValidation:message="tag contains a restricted tag matching karpenter.sh/nodeclaim",rule="self.all(k, k !='karpenter.sh/nodeclaim')"
+	// +kubebuilder:validation:XValidation:message="tag contains a restricted tag matching karpenter.k8s.alibabacloud/ecsnodeclass",rule="self.all(k, k !='karpenter.k8s.alibabacloud/ecsnodeclass')"
+	// +optional
+	Tags map[string]string `json:"tags,omitempty"`
 }
 
 // VSwitchSelectorTerm defines selection logic for a vSwitch used by Karpenter to launch nodes.
@@ -116,7 +125,7 @@ type ImageSelectorTerm struct {
 	// +kubebuilder:validation:MaxLength=30
 	// +optional
 	Alias string `json:"alias,omitempty"`
-	// Tags is a map of key/value tags used to select subsets
+	// Tags is a map of key/value tags used to select vswitches
 	// Specifying '*' for a value selects all values for a given tag key.
 	// +kubebuilder:validation:XValidation:message="empty tag keys aren't supported",rule="self.all(k, k != '')"
 	// +kubebuilder:validation:MaxProperties:=20
@@ -136,7 +145,7 @@ type ImageSelectorTerm struct {
 }
 
 // KubeletConfiguration defines args to be used when configuring kubelet on provisioned nodes.
-// They are a subset of the upstream types, recognizing not all options may be supported.
+// They are a vswitch of the upstream types, recognizing not all options may be supported.
 // Wherever possible, the types and names should reflect the upstream kubelet types.
 // https://pkg.go.dev/k8s.io/kubelet/config/v1beta1#KubeletConfiguration
 // https://github.com/kubernetes/kubernetes/blob/9f82d81e55cafdedab619ea25cabf5d42736dacf/cmd/kubelet/app/options/options.go#L53
