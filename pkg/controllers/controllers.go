@@ -30,22 +30,29 @@ import (
 	nodeclaimtagging "github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/controllers/nodeclaim/tagging"
 	nodeclasshash "github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/controllers/nodeclass/hash"
 	nodeclaasstatus "github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/controllers/nodeclass/status"
+	nodeclasstermination "github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/controllers/nodeclass/termination"
 	providersinstancetype "github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/controllers/providers/instancetype"
 	controllerspricing "github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/controllers/providers/pricing"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/instance"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/instancetype"
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/launchtemplate"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/pricing"
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/securitygroup"
+	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/vswitch"
 )
 
 func NewControllers(ctx context.Context, mgr manager.Manager, clk clock.Clock,
 	kubeClient client.Client, recorder events.Recorder,
-	cloudProvider cloudprovider.CloudProvider, instanceProvider instance.Provider,
-	instanceTypeProvider instancetype.Provider,
-	pricingProvider pricing.Provider) []controller.Controller {
+	cloudProvider cloudprovider.CloudProvider,
+	instanceProvider instance.Provider, instanceTypeProvider instancetype.Provider,
+	pricingProvider pricing.Provider,
+	vSwitchProvider vswitch.Provider, securitygroupProvider securitygroup.Provider,
+	launchTemplateProvider launchtemplate.Provider) []controller.Controller {
 
 	controllers := []controller.Controller{
 		nodeclasshash.NewController(kubeClient),
-		nodeclaasstatus.NewController(kubeClient),
+		nodeclaasstatus.NewController(kubeClient, vSwitchProvider, securitygroupProvider),
+		nodeclasstermination.NewController(kubeClient, recorder, launchTemplateProvider),
 		controllerspricing.NewController(pricingProvider),
 		nodeclaimgarbagecollection.NewController(kubeClient, cloudProvider),
 		nodeclaimtagging.NewController(kubeClient, instanceProvider),

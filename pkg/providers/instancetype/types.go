@@ -121,7 +121,7 @@ func computeRequirements(info *ecsclient.DescribeInstanceTypesResponseBodyInstan
 		scheduling.NewRequirement(v1alpha1.LabelInstanceEncryptionInTransitSupported, corev1.NodeSelectorOpIn, fmt.Sprint(info.NetworkEncryptionSupport)),
 	)
 	// Only add zone-id label when available in offerings. It may not be available if a user has upgraded from a
-	// previous version of Karpenter w/o zone-id support and the nodeclass subnet status has not yet updated.
+	// previous version of Karpenter w/o zone-id support and the nodeclass vswitch status has not yet updated.
 	if zoneIDs := lo.FilterMap(offerings.Available(), func(o cloudprovider.Offering, _ int) (string, bool) {
 		zoneID := o.Requirements.Get(v1alpha1.LabelTopologyZoneID).Any()
 		return zoneID, zoneID != ""
