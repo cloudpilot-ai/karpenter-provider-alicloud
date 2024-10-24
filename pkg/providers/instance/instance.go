@@ -387,7 +387,7 @@ func (p *DefaultProvider) getProvisioningGroup(ctx context.Context, nodeClass *v
 			break
 		}
 
-		vSwitchID := p.getVSwitchID(launchtemplate.InstanceTypes[i], zonalVSwitchs, requirements)
+		vSwitchID := p.getVSwitchID(launchtemplate.InstanceTypes[i], zonalVSwitchs, requirements, capacityType)
 		if vSwitchID == "" {
 			return nil, errors.New("vSwitchID not found")
 		}
@@ -447,7 +447,12 @@ func (p *DefaultProvider) checkODFallback(nodeClaim *karpv1.NodeClaim, instanceT
 	return nil
 }
 
-func (p *DefaultProvider) getVSwitchID(instanceType *cloudprovider.InstanceType, zonalVSwitchs map[string]*vswitch.VSwitch, reqs scheduling.Requirements) string {
+func (p *DefaultProvider) getVSwitchID(instanceType *cloudprovider.InstanceType,
+	zonalVSwitchs map[string]*vswitch.VSwitch, reqs scheduling.Requirements, capacityType string) string {
+	cheapestVSwitchId := ""
+	cheapestPrice := math.MaxFloat64
+
+	// For different AZ, the spot price may differ. So we need to get the cheapest vSwitch in the zone
 	for i := range instanceType.Offerings {
 		if reqs.Compatible(instanceType.Offerings[i].Requirements, scheduling.AllowUndefinedWellKnownLabels) != nil {
 			continue
@@ -456,9 +461,17 @@ func (p *DefaultProvider) getVSwitchID(instanceType *cloudprovider.InstanceType,
 		if !ok {
 			continue
 		}
-		return vswitch.ID
+		if capacityType == karpv1.CapacityTypeOnDemand {
+			return vswitch.ID
+		}
+
+		if instanceType.Offerings[i].Price < cheapestPrice {
+			cheapestVSwitchId = vswitch.ID
+			cheapestPrice = instanceType.Offerings[i].Price
+		}
 	}
-	return ""
+
+	return cheapestVSwitchId
 }
 
 type LaunchTemplate struct {
