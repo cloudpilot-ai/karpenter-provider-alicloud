@@ -36,10 +36,10 @@ func (c Custom) UserData(kubeletConfig *v1alpha1.KubeletConfiguration, taints []
 	return base64.StdEncoding.EncodeToString([]byte(tea.StringValue(customUserData)))
 }
 
-func (c Custom) DescribeImageQuery(_ context.Context, _ string, _ string) ([]DescribeImageQuery, error) {
-	return []DescribeImageQuery{}, nil
+func (c Custom) DescribeImageQuery(_ context.Context) (DescribeImageQuery, error) {
+	return DescribeImageQuery{}, nil
 }
 
 func (c Custom) DefaultSystemDisk() *v1alpha1.SystemDisk {
-	return nil
+	return &DefaultSystemDisk
 }

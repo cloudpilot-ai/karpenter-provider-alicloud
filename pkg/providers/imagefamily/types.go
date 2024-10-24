@@ -18,7 +18,6 @@ package imagefamily
 
 import (
 	"context"
-	"fmt"
 	"math"
 	"sort"
 	"time"
@@ -26,17 +25,14 @@ import (
 	ecs "github.com/alibabacloud-go/ecs-20140526/v4/client"
 	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/karpenter/pkg/cloudprovider"
 	"sigs.k8s.io/karpenter/pkg/scheduling"
 
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/apis/v1alpha1"
 )
 
-const (
-	// ImageVersionLatest is the version used in aliases to represent the latest version. This maps to different
-	// values in the OOS path, depending on the Image type (e.g. "recommended" for Aliyun3)).
-	ImageVersionLatest = "latest"
+var (
+	minTime time.Time = time.Unix(math.MinInt64, 0)
 )
 
 type Image struct {
@@ -69,35 +65,12 @@ func parseTimeWithDefault(dateStr string, defaultTime time.Time) time.Time {
 	return lo.Must(time.Parse(time.RFC3339, dateStr))
 }
 
-type Variant string
-
-var (
-	VariantStandard Variant   = "standard"
-	VariantNvidia   Variant   = "nvidia"
-	maxTime         time.Time = time.Unix(math.MaxInt64, 0)
-	minTime         time.Time = time.Unix(math.MinInt64, 0)
-)
-
-func NewVariant(v string) (Variant, error) {
-	var wellKnownVariants = sets.New(VariantStandard, VariantNvidia)
-	variant := Variant(v)
-	if !wellKnownVariants.Has(variant) {
-		return variant, fmt.Errorf("%q is not a well-known variant", variant)
-	}
-	return variant, nil
-}
-
-func (v Variant) Requirements() scheduling.Requirements {
-	switch v {
-	case VariantStandard:
-		// TODO: return some requirements
-	case VariantNvidia:
-		// TODO: return some requirements
-	}
-	return nil
-}
-
 type DescribeImageQuery struct {
+	FilterFunc func(string) bool
+	BaseQuery  DescribeImageQueryBase
+}
+
+type DescribeImageQueryBase struct {
 	*ecs.DescribeImagesRequest
 	// KnownRequirements is a map from image IDs to a set of known requirements.
 	// When discovering image IDs via OOS we know additional requirements which aren't surfaced by ecs:DescribeImage (e.g. GPU / Neuron compatibility)
@@ -106,8 +79,8 @@ type DescribeImageQuery struct {
 }
 
 func (q *DescribeImageQuery) RequirementsForImageWithArchitecture(arch string) []scheduling.Requirements {
-	if len(q.KnownRequirements) > 0 {
-		return lo.Map(q.KnownRequirements, func(r scheduling.Requirements, _ int) scheduling.Requirements {
+	if len(q.BaseQuery.KnownRequirements) > 0 {
+		return lo.Map(q.BaseQuery.KnownRequirements, func(r scheduling.Requirements, _ int) scheduling.Requirements {
 			r.Add(scheduling.NewRequirement(corev1.LabelArchStable, corev1.NodeSelectorOpIn, arch))
 			return r
 		})
@@ -118,7 +91,7 @@ func (q *DescribeImageQuery) RequirementsForImageWithArchitecture(arch string) [
 // ImageFamily can be implemented to override the default logic for generating dynamic launch template parameters
 // TODO: add OOSProvider
 type ImageFamily interface {
-	DescribeImageQuery(ctx context.Context, k8sVersion string, version string) ([]DescribeImageQuery, error)
+	DescribeImageQuery(ctx context.Context) (DescribeImageQuery, error)
 	UserData(kubeletConfig *v1alpha1.KubeletConfiguration, taints []corev1.Taint, labels map[string]string, instanceTypes []*cloudprovider.InstanceType, customUserData *string) string
 	DefaultSystemDisk() *v1alpha1.SystemDisk
 }

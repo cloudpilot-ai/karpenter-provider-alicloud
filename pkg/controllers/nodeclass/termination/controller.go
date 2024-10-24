@@ -41,21 +41,17 @@ import (
 	"sigs.k8s.io/karpenter/pkg/operator/injection"
 
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/apis/v1alpha1"
-	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/launchtemplate"
 )
 
 type Controller struct {
 	kubeClient client.Client
 	recorder   events.Recorder
-
-	launchTemplateProvider launchtemplate.Provider
 }
 
-func NewController(kubeClient client.Client, recorder events.Recorder, launchTemplateProvider launchtemplate.Provider) *Controller {
+func NewController(kubeClient client.Client, recorder events.Recorder) *Controller {
 	return &Controller{
-		kubeClient:             kubeClient,
-		recorder:               recorder,
-		launchTemplateProvider: launchTemplateProvider,
+		kubeClient: kubeClient,
+		recorder:   recorder,
 	}
 }
 
@@ -80,9 +76,6 @@ func (c *Controller) finalize(ctx context.Context, nodeClass *v1alpha1.ECSNodeCl
 	if len(nodeClaimList.Items) > 0 {
 		c.recorder.Publish(WaitingOnNodeClaimTerminationEvent(nodeClass, lo.Map(nodeClaimList.Items, func(nc karpv1.NodeClaim, _ int) string { return nc.Name })))
 		return reconcile.Result{RequeueAfter: time.Minute * 10}, nil // periodically fire the event
-	}
-	if err := c.launchTemplateProvider.DeleteAll(ctx, nodeClass); err != nil {
-		return reconcile.Result{}, fmt.Errorf("deleting launch templates, %w", err)
 	}
 	controllerutil.RemoveFinalizer(nodeClass, v1alpha1.TerminationFinalizer)
 	if !equality.Semantic.DeepEqual(stored, nodeClass) {

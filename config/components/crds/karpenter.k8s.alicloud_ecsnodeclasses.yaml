@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.16.3
+    controller-gen.kubebuilder.io/version: v0.16.4
   name: ecsnodeclasses.karpenter.k8s.alicloud
 spec:
   group: karpenter.k8s.alicloud
@@ -58,58 +58,34 @@ spec:
                       description: |-
                         Alias specifies which ACK image to select.
                         Each alias consists of a family and an image version, specified as "family@version".
-                        Valid families include: aliyun3.
+                        Valid families include: AlibabaCloudLinux3,AlibabaCloudLinux2
                         Currently only supports version pinning to the latest image release, with that images version format (ex: "aliyun3@latest").
                         Setting the version to latest will result in drift when a new Image is released. This is **not** recommended for production environments.
                       maxLength: 30
                       type: string
                       x-kubernetes-validations:
                       - message: '''alias'' is improperly formatted, must match the
-                          format ''family@version'''
-                        rule: self.matches('^[a-zA-Z0-9]*@.*$')
+                          format ''family'''
+                        rule: self.matches('^[a-zA-Z0-9]*$')
                       - message: 'family is not supported, must be one of the following:
-                          ''aliyun3'''
-                        rule: self.find('^[^@]+') in ['aliyun3']
+                          ''AlibabaCloudLinux3,AlibabaCloudLinux2'''
+                        rule: self.find('^[^@]+') in ['AlibabaCloudLinux3', 'AlibabaCloudLinux2']
                     id:
                       description: ID is the image id in ECS
                       type: string
-                    name:
-                      description: |-
-                        Name is the image name in ECS.
-                        This value is the name field, which is different from the name tag.
-                      type: string
-                    owner:
-                      description: |-
-                        Owner is the image source.
-                        Default is system | self | public. If specified, only one of the following: "self", "system", "share", "public", and "marketplace"
-                      type: string
-                    tags:
-                      additionalProperties:
-                        type: string
-                      description: |-
-                        Tags is a map of key/value tags used to select vswitches
-                        Specifying '*' for a value selects all values for a given tag key.
-                      maxProperties: 20
-                      type: object
-                      x-kubernetes-validations:
-                      - message: empty tag keys aren't supported
-                        rule: self.all(k, k != '')
                   type: object
                 maxItems: 30
                 minItems: 1
                 type: array
                 x-kubernetes-validations:
-                - message: expected at least one, got none, ['tags', 'id', 'name',
-                    'alias']
-                  rule: self.all(x, has(x.tags) || has(x.id) || has(x.name) || has(x.alias))
+                - message: expected at least one, got none, ['id', 'alias']
+                  rule: self.all(x, has(x.id) || has(x.alias))
                 - message: '''id'' is mutually exclusive, cannot be set with a combination
                     of other fields in imageSelectorTerms'
-                  rule: '!self.exists(x, has(x.id) && (has(x.alias) || has(x.tags)
-                    || has(x.name) || has(x.owner)))'
+                  rule: '!self.exists(x, has(x.id) && (has(x.alias)))'
                 - message: '''alias'' is mutually exclusive, cannot be set with a
                     combination of other fields in imageSelectorTerms'
-                  rule: '!self.exists(x, has(x.alias) && (has(x.id) || has(x.tags)
-                    || has(x.name) || has(x.owner)))'
+                  rule: '!self.exists(x, has(x.alias) && (has(x.id)))'
                 - message: '''alias'' is mutually exclusive, cannot be set with a
                     combination of other imageSelectorTerms'
                   rule: '!(self.exists(x, has(x.alias)) && self.size() != 1)'

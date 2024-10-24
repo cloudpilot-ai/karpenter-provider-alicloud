@@ -36,7 +36,6 @@ import (
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/imagefamily"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/instance"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/instancetype"
-	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/launchtemplate"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/pricing"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/securitygroup"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/vswitch"
@@ -48,12 +47,12 @@ func NewControllers(ctx context.Context, mgr manager.Manager, clk clock.Clock,
 	instanceProvider instance.Provider, instanceTypeProvider instancetype.Provider,
 	pricingProvider pricing.Provider,
 	vSwitchProvider vswitch.Provider, securitygroupProvider securitygroup.Provider,
-	launchTemplateProvider launchtemplate.Provider, imageProvider imagefamily.Provider) []controller.Controller {
+	imageProvider imagefamily.Provider) []controller.Controller {
 
 	controllers := []controller.Controller{
 		nodeclasshash.NewController(kubeClient),
 		nodeclaasstatus.NewController(kubeClient, vSwitchProvider, securitygroupProvider, imageProvider),
-		nodeclasstermination.NewController(kubeClient, recorder, launchTemplateProvider),
+		nodeclasstermination.NewController(kubeClient, recorder),
 		controllerspricing.NewController(pricingProvider),
 		nodeclaimgarbagecollection.NewController(kubeClient, cloudProvider),
 		nodeclaimtagging.NewController(kubeClient, instanceProvider),
