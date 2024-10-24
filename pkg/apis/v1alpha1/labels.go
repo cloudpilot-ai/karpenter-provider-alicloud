@@ -77,25 +77,12 @@ var (
 		regexp.MustCompile(fmt.Sprintf("^%s$", regexp.QuoteMeta(LabelNodeClass))),
 		regexp.MustCompile(fmt.Sprintf("^%s$", regexp.QuoteMeta(TagNodeClaim))),
 	}
-	AMIFamilyBottlerocket                          = "Bottlerocket"
-	AMIFamilyAL2                                   = "AL2"
-	ImageFamilyAliyun3                             = "Aliyun3"
-	AMIFamilyUbuntu                                = "Ubuntu"
-	AMIFamilyWindows2019                           = "Windows2019"
-	AMIFamilyWindows2022                           = "Windows2022"
-	ImageFamilyCustom                              = "Custom"
-	Windows2019                                    = "2019"
-	Windows2022                                    = "2022"
-	WindowsCore                                    = "Core"
-	Windows2019Build                               = "10.0.17763"
-	Windows2022Build                               = "10.0.20348"
-	ResourceNVIDIAGPU          corev1.ResourceName = "nvidia.com/gpu"
-	ResourceAMDGPU             corev1.ResourceName = "amd.com/gpu"
-	ResourceAWSNeuron          corev1.ResourceName = "alicloud.amazon.com/neuron"
-	ResourceHabanaGaudi        corev1.ResourceName = "habana.ai/gaudi"
-	ResourceAWSPodENI          corev1.ResourceName = "vpc.amazonalicloud.com/pod-eni"
-	ResourcePrivateIPv4Address corev1.ResourceName = "vpc.amazonalicloud.com/PrivateIPv4Address"
-	ResourceEFA                corev1.ResourceName = "vpc.amazonalicloud.com/efa"
+	ImageFamilyAlibabaCloudLinux3                     = "AlibabaCloudLinux3"
+	ImageFamilyAlibabaCloudLinux2                     = "AlibabaCloudLinux2"
+	ImageFamilyCustom                                 = "Custom"
+	ResourceNVIDIAGPU             corev1.ResourceName = "nvidia.com/gpu"
+	ResourceAMDGPU                corev1.ResourceName = "amd.com/gpu"
+	ResourcePrivateIPv4Address    corev1.ResourceName = "vpc.alibabacloud.com/PrivateIPv4Address"
 
 	ECSClusterNameTagKey = "ecs:ecs-cluster-name"
 

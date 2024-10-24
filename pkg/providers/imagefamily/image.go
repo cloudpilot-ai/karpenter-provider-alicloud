@@ -28,11 +28,9 @@ import (
 	"github.com/mitchellh/hashstructure/v2"
 	"github.com/patrickmn/go-cache"
 	"github.com/samber/lo"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/karpenter/pkg/utils/pretty"
 
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/apis/v1alpha1"
-	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/version"
 )
 
 type Provider interface {
@@ -41,21 +39,18 @@ type Provider interface {
 
 type DefaultProvider struct {
 	sync.Mutex
-	cache           *cache.Cache
-	region          string
-	ecsapi          *ecs.Client
-	cm              *pretty.ChangeMonitor
-	versionProvider version.Provider
-	// TODO: add OOSProvider
+	cache  *cache.Cache
+	region string
+	ecsapi *ecs.Client
+	cm     *pretty.ChangeMonitor
 }
 
-func NewDefaultProvider(region string, versionProvider version.Provider, ecsapi *ecs.Client, cache *cache.Cache) *DefaultProvider {
+func NewDefaultProvider(region string, ecsapi *ecs.Client, cache *cache.Cache) *DefaultProvider {
 	return &DefaultProvider{
-		cache:           cache,
-		region:          region,
-		ecsapi:          ecsapi,
-		cm:              pretty.NewChangeMonitor(),
-		versionProvider: versionProvider,
+		cache:  cache,
+		region: region,
+		ecsapi: ecsapi,
+		cm:     pretty.NewChangeMonitor(),
 	}
 }
 
@@ -63,75 +58,64 @@ func NewDefaultProvider(region string, versionProvider version.Provider, ecsapi 
 func (p *DefaultProvider) List(ctx context.Context, nodeClass *v1alpha1.ECSNodeClass) (Images, error) {
 	p.Lock()
 	defer p.Unlock()
+
 	queries, err := p.DescribeImageQueries(ctx, nodeClass)
 	if err != nil {
-		return nil, fmt.Errorf("getting image queries, %w", err)
+		return nil, err
 	}
 	images, err := p.GetImages(queries)
 	if err != nil {
 		return nil, err
 	}
 	images.Sort()
-	uniqueImages := lo.Uniq(lo.Map(images, func(a Image, _ int) string { return a.ImageID }))
-	if p.cm.HasChanged(fmt.Sprintf("images/%s", nodeClass.Name), uniqueImages) {
-		log.FromContext(ctx).WithValues(
-			"ids", uniqueImages).V(1).Info("discovered images")
-	}
+
 	return images, nil
 }
 
 func (p *DefaultProvider) DescribeImageQueries(ctx context.Context, nodeClass *v1alpha1.ECSNodeClass) ([]DescribeImageQuery, error) {
+	var queries []DescribeImageQuery
+
 	// Aliases are mutually exclusive, both on the term level and field level within a term.
 	// This is enforced by a CEL validation, we will treat this as an invariant.
 	if term, ok := lo.Find(nodeClass.Spec.ImageSelectorTerms, func(term v1alpha1.ImageSelectorTerm) bool {
 		return term.Alias != ""
 	}); ok {
-		kubernetesVersion, err := p.versionProvider.Get(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("getting kubernetes version, %w", err)
-		}
 		imageFamily := GetImageFamily(v1alpha1.ImageFamilyFromAlias(term.Alias), nil)
-		query, err := imageFamily.DescribeImageQuery(ctx, kubernetesVersion, v1alpha1.ImageVersionFromAlias(term.Alias))
+		query, err := imageFamily.DescribeImageQuery(ctx)
 		if err != nil {
 			return nil, err
 		}
-		return query, nil
+		queries = append(queries, query)
 	}
 
-	var queries []DescribeImageQuery
-	for _, term := range nodeClass.Spec.ImageSelectorTerms {
-		describeImagesRequest := &ecs.DescribeImagesRequest{
-			ImageOwnerAlias: lo.Ternary(term.Owner != "", tea.String(term.Owner), nil),
-			IsPublic:        tea.Bool(true),
+	for _, selectTerm := range nodeClass.Spec.ImageSelectorTerms {
+		if selectTerm.ID == "" {
+			continue
 		}
-		if term.Owner == "share" {
-			describeImagesRequest.IsPublic = tea.Bool(false)
+
+		// Referring to: https://help.aliyun.com/zh/ecs/developer-reference/api-ecs-2014-05-26-describeimages
+		query := DescribeImageQuery{
+			BaseQuery: DescribeImageQueryBase{
+				DescribeImagesRequest: &ecs.DescribeImagesRequest{
+					ImageOwnerAlias: tea.String("system"),
+					OSType:          tea.String("linux"),
+					ActionType:      tea.String("CreateEcs"),
+					ImageId:         tea.String(selectTerm.ID),
+				},
+			},
 		}
-		if term.ID != "" {
-			describeImagesRequest.ImageId = tea.String(term.ID)
-		}
-		if term.Name != "" {
-			describeImagesRequest.ImageName = tea.String(term.Name)
-		}
-		var tags []*ecs.DescribeImagesRequestTag
-		for k, v := range term.Tags {
-			tag := &ecs.DescribeImagesRequestTag{Key: tea.String(k)}
-			if v != "*" {
-				tag.Value = tea.String(v)
-			}
-			tags = append(tags, tag)
-		}
-		if len(tags) > 0 {
-			describeImagesRequest.Tag = tags
-		}
-		queries = append(queries, DescribeImageQuery{DescribeImagesRequest: describeImagesRequest})
+		queries = append(queries, query)
 	}
+
 	return queries, nil
 }
 
 //nolint:gocyclo
 func (p *DefaultProvider) GetImages(queries []DescribeImageQuery) (Images, error) {
-	hash, err := hashstructure.Hash(queries, hashstructure.FormatV2, &hashstructure.HashOptions{SlicesAsSets: true})
+	baseQuries := lo.Map(queries, func(item DescribeImageQuery, _ int) DescribeImageQueryBase {
+		return item.BaseQuery
+	})
+	hash, err := hashstructure.Hash(baseQuries, hashstructure.FormatV2, &hashstructure.HashOptions{SlicesAsSets: true})
 	if err != nil {
 		return nil, err
 	}
@@ -142,37 +126,40 @@ func (p *DefaultProvider) GetImages(queries []DescribeImageQuery) (Images, error
 	}
 
 	images := map[uint64]Image{}
-	for _, query := range queries {
-		if err := p.describeImages(query.DescribeImagesRequest, func(image *ecs.DescribeImagesResponseBodyImagesImage) {
-			// not support i386
-			arch, ok := v1alpha1.AlibabaCloudToKubeArchitectures[lo.FromPtr(image.Architecture)]
-			if !ok {
-				return
-			}
+	imageProcessHandler := func(query DescribeImageQuery, image *ecs.DescribeImagesResponseBodyImagesImage) {
+		// not support i386
+		arch, ok := v1alpha1.AlibabaCloudToKubeArchitectures[lo.FromPtr(image.Architecture)]
+		if !ok {
+			return
+		}
 
-			// Each image may have multiple associated sets of requirements. For example, an image may be compatible with Neuron instances
-			// and GPU instances. In that case, we'll have a set of requirements for each, and will create one "image" for each.
-			for _, reqs := range query.RequirementsForImageWithArchitecture(arch) {
-				// If we already have an image with the same set of requirements, but this image is newer, replace the previous image.
-				reqsHash := lo.Must(hashstructure.Hash(reqs.NodeSelectorRequirements(), hashstructure.FormatV2, &hashstructure.HashOptions{SlicesAsSets: true}))
-				if v, ok := images[reqsHash]; ok {
-					candidateCreationTime, _ := time.Parse(time.RFC3339, lo.FromPtr(image.CreationTime))
-					existingCreationTime, _ := time.Parse(time.RFC3339, v.CreationTime)
-					if existingCreationTime == candidateCreationTime && lo.FromPtr(image.ImageName) < v.Name {
-						continue
-					}
-					if candidateCreationTime.Unix() < existingCreationTime.Unix() {
-						continue
-					}
+		// Each image may have multiple associated sets of requirements. For example, an image may be compatible with Neuron instances
+		// and GPU instances. In that case, we'll have a set of requirements for each, and will create one "image" for each.
+		for _, reqs := range query.RequirementsForImageWithArchitecture(arch) {
+			// If we already have an image with the same set of requirements, but this image is newer, replace the previous image.
+			reqsHash := lo.Must(hashstructure.Hash(reqs.NodeSelectorRequirements(),
+				hashstructure.FormatV2, &hashstructure.HashOptions{SlicesAsSets: true}))
+			if v, ok := images[reqsHash]; !ok {
+				candidateCreationTime, _ := time.Parse(time.RFC3339, lo.FromPtr(image.CreationTime))
+				existingCreationTime, _ := time.Parse(time.RFC3339, v.CreationTime)
+				if existingCreationTime == candidateCreationTime && lo.FromPtr(image.ImageName) < v.Name {
+					continue
 				}
-				images[reqsHash] = Image{
-					Name:         lo.FromPtr(image.ImageName),
-					ImageID:      lo.FromPtr(image.ImageId),
-					CreationTime: lo.FromPtr(image.CreationTime),
-					Requirements: reqs,
+				if candidateCreationTime.Unix() < existingCreationTime.Unix() {
+					continue
 				}
 			}
-		}); err != nil {
+			images[reqsHash] = Image{
+				Name:         lo.FromPtr(image.ImageName),
+				ImageID:      lo.FromPtr(image.ImageId),
+				CreationTime: lo.FromPtr(image.CreationTime),
+				Requirements: reqs,
+			}
+		}
+	}
+
+	for _, query := range queries {
+		if err := p.describeImages(query, imageProcessHandler); err != nil {
 			return nil, fmt.Errorf("describing images, %w", err)
 		}
 
@@ -181,21 +168,26 @@ func (p *DefaultProvider) GetImages(queries []DescribeImageQuery) (Images, error
 	return lo.Values(images), nil
 }
 
-func (p *DefaultProvider) describeImages(request *ecs.DescribeImagesRequest, process func(*ecs.DescribeImagesResponseBodyImagesImage)) error {
-	request.RegionId = tea.String(p.region)
-	request.PageSize = tea.Int32(100)
-	runtime := &util.RuntimeOptions{}
+//nolint:gocyclo
+func (p *DefaultProvider) describeImages(query DescribeImageQuery, process func(DescribeImageQuery, *ecs.DescribeImagesResponseBodyImagesImage)) error {
+	req := query.BaseQuery.DescribeImagesRequest
+	req.RegionId = tea.String(p.region)
+	req.PageSize = tea.Int32(100)
+
 	for pageNumber := int32(1); pageNumber < 500; pageNumber++ {
-		request.PageNumber = tea.Int32(pageNumber)
-		output, err := p.ecsapi.DescribeImagesWithOptions(request, runtime)
+		req.PageNumber = tea.Int32(pageNumber)
+		output, err := p.ecsapi.DescribeImagesWithOptions(req, &util.RuntimeOptions{})
 		if err != nil {
 			return err
 		} else if output == nil || output.Body == nil || output.Body.TotalCount == nil || output.Body.Images == nil {
 			return fmt.Errorf("unexpected null value was returned")
 		}
 
-		for i := range output.Body.Images.Image {
-			process(output.Body.Images.Image[i])
+		for _, im := range output.Body.Images.Image {
+			if query.FilterFunc != nil && !query.FilterFunc(tea.StringValue(im.ImageId)) {
+				continue
+			}
+			process(query, im)
 		}
 
 		if *output.Body.TotalCount < pageNumber*100 || len(output.Body.Images.Image) < 100 {

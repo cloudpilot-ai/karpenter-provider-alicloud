@@ -36,6 +36,11 @@ import (
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/apis/v1alpha1"
 )
 
+var DefaultSystemDisk = v1alpha1.SystemDisk{
+	Category: tea.String("cloud_auto"),
+	Size:     tea.Int32(20),
+}
+
 // Options define the static launch template parameters
 type Options struct {
 	ClusterName     string
@@ -130,8 +135,10 @@ func GetImageFamily(family string, options *Options) ImageFamily {
 	switch family {
 	case v1alpha1.ImageFamilyCustom:
 		return &Custom{Options: options}
-	case v1alpha1.ImageFamilyAliyun3:
-		return &Aliyun3{Options: options}
+	case v1alpha1.ImageFamilyAlibabaCloudLinux3:
+		return &AlibabaCloudLinux3{Options: options}
+	case v1alpha1.ImageFamilyAlibabaCloudLinux2:
+		return &AlibabaCloudLinux2{Options: options}
 	default:
 		return nil
 	}
@@ -201,6 +208,7 @@ func (r *DefaultResolver) filterInstanceTypesBySystemDisk(ctx context.Context, n
 	}
 	expectDiskCategory := *nodeClass.Spec.SystemDisk.Category
 
+	// TODO: make following request parallel
 	var result []*cloudprovider.InstanceType
 	for i, instanceType := range instanceTypes {
 		if availableSystemDisk, ok := r.cache.Get(instanceType.Name); ok {

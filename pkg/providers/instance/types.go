@@ -58,20 +58,44 @@ func NewInstance(out *ecsclient.DescribeInstancesResponseBodyInstancesInstance) 
 	}
 
 	return &Instance{
-		CreationTime: creationTime,
-		Status:       *out.Status,
-		ID:           *out.InstanceId,
-		ImageID:      *out.ImageId,
-		Type:         *out.InstanceType,
-		Region:       *out.RegionId,
-		Zone:         *out.ZoneId,
-		CapacityType: utils.GetCapacityTypes(*out.SpotStrategy),
-		SecurityGroupIDs: lo.Map(out.SecurityGroupIds.SecurityGroupId, func(securitygroup *string, _ int) string {
-			return *securitygroup
-		}),
-		VSwitchID: *out.VpcAttributes.VSwitchId,
-		Tags: lo.SliceToMap(out.Tags.Tag, func(tag *ecsclient.DescribeInstancesResponseBodyInstancesInstanceTagsTag) (string, string) {
-			return *tag.TagKey, *tag.TagValue
-		}),
+		CreationTime:     creationTime,
+		Status:           *out.Status,
+		ID:               *out.InstanceId,
+		ImageID:          *out.ImageId,
+		Type:             *out.InstanceType,
+		Region:           *out.RegionId,
+		Zone:             *out.ZoneId,
+		CapacityType:     utils.GetCapacityTypes(*out.SpotStrategy),
+		SecurityGroupIDs: toSecurityGroupIDs(out.SecurityGroupIds),
+		VSwitchID:        toVSwitchID(out.VpcAttributes),
+		Tags:             toTags(out.Tags),
 	}
+}
+
+func toSecurityGroupIDs(securityGroups *ecsclient.DescribeInstancesResponseBodyInstancesInstanceSecurityGroupIds) []string {
+	if securityGroups == nil {
+		return []string{}
+	}
+
+	return lo.Map(securityGroups.SecurityGroupId, func(securitygroup *string, _ int) string {
+		return *securitygroup
+	})
+}
+
+func toVSwitchID(vpcAttributes *ecsclient.DescribeInstancesResponseBodyInstancesInstanceVpcAttributes) string {
+	if vpcAttributes == nil {
+		return ""
+	}
+
+	return *vpcAttributes.VSwitchId
+}
+
+func toTags(tags *ecsclient.DescribeInstancesResponseBodyInstancesInstanceTags) map[string]string {
+	if tags == nil {
+		return map[string]string{}
+	}
+
+	return lo.SliceToMap(tags.Tag, func(tag *ecsclient.DescribeInstancesResponseBodyInstancesInstanceTagsTag) (string, string) {
+		return *tag.TagKey, *tag.TagValue
+	})
 }

@@ -30,7 +30,6 @@ import (
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/imagefamily"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/instance"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/instancetype"
-	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/launchtemplate"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/pricing"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/securitygroup"
 	"github.com/cloudpilot-ai/karpenter-provider-alicloud/pkg/providers/version"
@@ -42,15 +41,14 @@ import (
 type Operator struct {
 	*operator.Operator
 
-	InstanceProvider       instance.Provider
-	PricingProvider        pricing.Provider
-	VSwitchProvider        vswitch.Provider
-	SecurityGroupProvider  securitygroup.Provider
-	ImageProvider          imagefamily.Provider
-	ImageResolver          imagefamily.Resolver
-	LaunchTemplateProvider launchtemplate.Provider
-	VersionProvider        version.Provider
-	InstanceTypeProvider   instancetype.Provider
+	InstanceProvider      instance.Provider
+	PricingProvider       pricing.Provider
+	VSwitchProvider       vswitch.Provider
+	SecurityGroupProvider securitygroup.Provider
+	ImageProvider         imagefamily.Provider
+	ImageResolver         imagefamily.Resolver
+	VersionProvider       version.Provider
+	InstanceTypeProvider  instancetype.Provider
 }
 
 func NewOperator(ctx context.Context, operator *operator.Operator) (context.Context, *Operator) {
@@ -80,28 +78,16 @@ func NewOperator(ctx context.Context, operator *operator.Operator) (context.Cont
 	versionProvider := version.NewDefaultProvider(operator.KubernetesInterface, cache.New(alicache.KubernetesVersionTTL, alicache.DefaultCleanupInterval))
 	vSwitchProvider := vswitch.NewDefaultProvider(vpcClient, cache.New(alicache.DefaultTTL, alicache.DefaultCleanupInterval), cache.New(alicache.AvailableIPAddressTTL, alicache.DefaultCleanupInterval))
 	securityGroupProvider := securitygroup.NewDefaultProvider(region, ecsClient, cache.New(alicache.DefaultTTL, alicache.DefaultCleanupInterval))
-	imageProvider := imagefamily.NewDefaultProvider(region, versionProvider, ecsClient, cache.New(alicache.DefaultTTL, alicache.DefaultCleanupInterval))
+	imageProvider := imagefamily.NewDefaultProvider(region, ecsClient, cache.New(alicache.DefaultTTL, alicache.DefaultCleanupInterval))
 	imageResolver := imagefamily.NewDefaultResolver(region, ecsClient, cache.New(alicache.InstanceTypeAvailableDiskTTL, alicache.DefaultCleanupInterval))
-	launchTemplateProvider := launchtemplate.NewDefaultProvider(
-		ctx,
-		cache.New(alicache.LaunchTemplateTTL, alicache.DefaultCleanupInterval),
-		region,
-		ecsClient,
-		imageResolver,
-		securityGroupProvider,
-		vSwitchProvider,
-		nil,
-		operator.Elected(),
-		nil,
-		"",
-	)
 
 	instanceProvider := instance.NewDefaultProvider(
 		ctx,
 		region,
+		"",
 		ecsClient,
+		imageResolver,
 		vSwitchProvider,
-		launchTemplateProvider,
 	)
 
 	unavailableOfferingsCache := alicache.NewUnavailableOfferings()
@@ -114,14 +100,13 @@ func NewOperator(ctx context.Context, operator *operator.Operator) (context.Cont
 	return ctx, &Operator{
 		Operator: operator,
 
-		InstanceProvider:       instanceProvider,
-		PricingProvider:        pricingProvider,
-		VSwitchProvider:        vSwitchProvider,
-		SecurityGroupProvider:  securityGroupProvider,
-		ImageProvider:          imageProvider,
-		ImageResolver:          imageResolver,
-		VersionProvider:        versionProvider,
-		LaunchTemplateProvider: launchTemplateProvider,
-		InstanceTypeProvider:   instanceTypeProvider,
+		InstanceProvider:      instanceProvider,
+		PricingProvider:       pricingProvider,
+		VSwitchProvider:       vSwitchProvider,
+		SecurityGroupProvider: securityGroupProvider,
+		ImageProvider:         imageProvider,
+		ImageResolver:         imageResolver,
+		VersionProvider:       versionProvider,
+		InstanceTypeProvider:  instanceTypeProvider,
 	}
 }
